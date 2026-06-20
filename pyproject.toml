@@ -1,0 +1,9 @@
+[project]
+name = "deepseek-balance-dashboard"
+version = "1.0.0"
+description = "DeepSeek balance dashboard for MindReset Dot Quote/0 e-ink display"
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.backends._legacy:_Backend"

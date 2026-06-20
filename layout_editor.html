@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeepSeek Balance — Layout Editor</title>
+<style>
+/* ============================================================
+   CSS Variables & Reset
+   ============================================================ */
+:root {
+  --bg: #0d0d0d;
+  --panel: #171717;
+  --panel-hover: #1f1f1f;
+  --border: #2a2a2a;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --accent: #4ade80;
+  --accent-dim: #166534;
+  --danger: #f87171;
+  --device-bezel: #2c2c2c;
+  --device-shadow: rgba(0,0,0,0.6);
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --radius: 6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 14px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  background-image:
+    radial-gradient(circle at 50% 0%, #1a1a1a 0%, transparent 70%),
+    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.008) 2px, rgba(255,255,255,0.008) 4px);
+}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.app-header {
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel);
+}
+.app-header h1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.app-header .badge {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 3px 10px;
+  border-radius: 99px;
+  border: 1px solid rgba(74,222,128,0.2);
+}
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 0;
+  min-height: calc(100vh - 53px - 200px);
+}
+
+/* ============================================================
+   Preview Panel (Left)
+   ============================================================ */
+.preview-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background:
+    radial-gradient(ellipse at center, #1a1a1a 0%, transparent 70%);
+}
+
+.device-wrapper {
+  position: relative;
+}
+
+.device-frame {
+  background: var(--device-bezel);
+  border-radius: 28px;
+  padding: 28px 20px;
+  box-shadow:
+    0 0 0 1px #3a3a3a,
+    0 4px 24px var(--device-shadow),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+  position: relative;
+}
+
+.device-frame::before {
+  content: '';
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  box-shadow: inset 0 0 2px rgba(0,0,0,0.8);
+}
+
+.device-frame::after {
+  content: '●';
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 6px;
+  color: #4ade80;
+  text-shadow: 0 0 4px rgba(74,222,128,0.6);
+  animation: led-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes led-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.screen-container {
+  width: 888px;  /* 296 × 3 */
+  height: 456px; /* 152 × 3 */
+  overflow: hidden;
+  border-radius: 4px;
+  background: #f8f8f8;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+}
+
+.screen-inner {
+  width: 296px;
+  height: 152px;
+  transform: scale(3);
+  transform-origin: top left;
+  background: #fff;
+  font-family: -apple-system, 'Helvetica Neue', sans-serif;
+  /* Will be populated by JS */
+}
+
+.screen-label {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+/* ============================================================
+   Controls Panel (Right)
+   ============================================================ */
+.controls-panel {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  padding: 20px;
+  overflow-y: auto;
+  max-height: calc(100vh - 53px - 200px);
+}
+
+.control-section {
+  margin-bottom: 20px;
+}
+.control-section:last-child { margin-bottom: 0; }
+
+.section-title {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.section-title::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+.control-row label {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  min-width: 60px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+.control-row input[type="text"],
+.control-row input[type="number"] {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 0.15s;
+  max-width: 180px;
+}
+.control-row input:focus {
+  border-color: var(--accent);
+}
+
+/* Slider */
+.control-row input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+  max-width: 130px;
+}
+.control-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent-dim);
+  transition: transform 0.1s;
+}
+.control-row input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.slider-value {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--accent);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Toggle Switch */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding: 4px 0;
+}
+.toggle-row span {
+  font-size: 0.78rem;
+  color: var(--text);
+}
+.toggle-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--border);
+  border-radius: 20px;
+  transition: 0.2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 14px; width: 14px;
+  left: 3px; bottom: 3px;
+  background: #666;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent-dim);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: var(--accent);
+}
+
+/* Select */
+select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  outline: none;
+  cursor: pointer;
+  flex: 1;
+  max-width: 180px;
+}
+select:focus { border-color: var(--accent); }
+
+/* ============================================================
+   JSON Output (Bottom)
+   ============================================================ */
+.output-panel {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.output-header h2 {
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  outline: none;
+  letter-spacing: 0.03em;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: var(--accent-dim);
+  border-color: rgba(74,222,128,0.3);
+  color: var(--accent);
+}
+.btn-primary:hover {
+  background: #1a6b3a;
+  border-color: var(--accent);
+}
+
+.btn-secondary {
+  background: var(--bg);
+  color: var(--text-dim);
+}
+.btn-secondary:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+.btn-copy {
+  background: var(--bg);
+  color: var(--text-dim);
+}
+.btn-copy.copied {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.json-output {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #c9d1d9;
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 250px;
+  overflow-y: auto;
+  tab-size: 2;
+}
+
+.json-key   { color: #79c0ff; }
+.json-str   { color: #a5d6ff; }
+.json-num   { color: #79c0ff; }
+.json-bool  { color: #ff7b72; }
+.json-null  { color: #8b949e; }
+
+/* ============================================================
+   Scrollbar
+   ============================================================ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 1300px) {
+  .main-grid { grid-template-columns: 1fr; }
+  .controls-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    max-height: none;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+  .preview-panel { padding: 20px; }
+  .screen-container { width: 592px; height: 304px; }
+  .screen-inner { transform: scale(2); }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="app-header">
+  <h1>DeepSeek Balance · Layout Editor</h1>
+  <span class="badge">296×152 · Quote/0</span>
+</div>
+
+<!-- Main Content -->
+<div class="main-grid">
+  <!-- Left: Preview -->
+  <div class="preview-panel">
+    <div class="device-wrapper">
+      <div class="device-frame">
+        <div class="screen-container">
+          <div class="screen-inner" id="preview"></div>
+        </div>
+      </div>
+      <div class="screen-label">Quote/0 — 3× Preview</div>
+    </div>
+  </div>
+
+  <!-- Right: Controls -->
+  <div class="controls-panel" id="controls">
+    <!-- Data -->
+    <div class="control-section">
+      <div class="section-title">Data Values</div>
+      <div class="control-row">
+        <label>Currency</label>
+        <select id="ctrl-currency" onchange="updatePreview()">
+          <option value="CNY">CNY (¥)</option>
+          <option value="USD">USD ($)</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label>Balance</label>
+        <input type="text" id="ctrl-balance" value="¥26.07" oninput="updatePreview()">
+      </div>
+      <div class="control-row">
+        <label>Daily Δ</label>
+        <input type="text" id="ctrl-daily" value="↓ -¥0.54" oninput="updatePreview()">
+      </div>
+      <div class="control-row">
+        <label>Total spent</label>
+        <input type="text" id="ctrl-total" value="累计消费 -¥74.47" oninput="updatePreview()">
+      </div>
+      <div class="control-row">
+        <label>Init recharge</label>
+        <input type="text" id="ctrl-init" value="初始充值 ¥100.00" oninput="updatePreview()">
+      </div>
+      <div class="control-row">
+        <label>Status</label>
+        <input type="text" id="ctrl-status" value="● Active" oninput="updatePreview()">
+      </div>
+      <div class="control-row">
+        <label>Timestamp</label>
+        <input type="text" id="ctrl-time" value="06/20 08:00" oninput="updatePreview()">
+      </div>
+    </div>
+
+    <!-- Layout -->
+    <div class="control-section">
+      <div class="section-title">Layout (px)</div>
+      <div class="control-row">
+        <label>Icon size</label>
+        <input type="range" id="ctrl-icon-size" min="20" max="80" value="40" oninput="updateSlider(this); updatePreview()">
+        <span class="slider-value">40px</span>
+      </div>
+      <div class="control-row">
+        <label>Icon col W</label>
+        <input type="range" id="ctrl-icon-col" min="40" max="100" value="56" oninput="updateSlider(this); updatePreview()">
+        <span class="slider-value">56px</span>
+      </div>
+      <div class="control-row">
+        <label>Col gap</label>
+        <input type="range" id="ctrl-col-gap" min="0" max="20" value="6" oninput="updateSlider(this); updatePreview()">
+        <span class="slider-value">6px</span>
+      </div>
+      <div class="control-row">
+        <label>Row gap</label>
+        <input type="range" id="ctrl-row-gap" min="0" max="12" value="4" oninput="updateSlider(this); updatePreview()">
+        <span class="slider-value">4px</span>
+      </div>
+      <div class="control-row">
+        <label>Padding</label>
+        <input type="range" id="ctrl-padding" min="0" max="16" value="8" oninput="updateSlider(this); updatePreview()">
+        <span class="slider-value">8px</span>
+      </div>
+    </div>
+
+    <!-- Fonts -->
+    <div class="control-section">
+      <div class="section-title">Font Sizes (px)</div>
+      <div class="control-row">
+        <label>Balance</label>
+        <input type="range" id="ctrl-font-balance" min="20" max="40" value="28" oninput="updateSlider(this); updatePreview()">
+        <span class="slider-value">28px</span>
+      </div>
+      <div class="control-row">
+        <label>Label</label>
+        <input type="range" id="ctrl-font-label" min="8" max="14" value="10" oninput="updateSlider(this); updatePreview()">
+        <span class="slider-value">10px</span>
+      </div>
+      <div class="control-row">
+        <label>Small</label>
+        <input type="range" id="ctrl-font-small" min="6" max="10" value="8" oninput="updateSlider(this); updatePreview()">
+        <span class="slider-value">8px</span>
+      </div>
+    </div>
+
+    <!-- Visibility Toggles -->
+    <div class="control-section">
+      <div class="section-title">Row Visibility</div>
+      <label class="toggle-row">
+        <span>Status row</span>
+        <div class="toggle-switch">
+          <input type="checkbox" id="ctrl-show-status" checked onchange="updatePreview()">
+          <span class="toggle-slider"></span>
+        </div>
+      </label>
+      <label class="toggle-row">
+        <span>Daily change</span>
+        <div class="toggle-switch">
+          <input type="checkbox" id="ctrl-show-daily" checked onchange="updatePreview()">
+          <span class="toggle-slider"></span>
+        </div>
+      </label>
+      <label class="toggle-row">
+        <span>Total spent</span>
+        <div class="toggle-switch">
+          <input type="checkbox" id="ctrl-show-total" checked onchange="updatePreview()">
+          <span class="toggle-slider"></span>
+        </div>
+      </label>
+      <label class="toggle-row">
+        <span>Init recharge</span>
+        <div class="toggle-switch">
+          <input type="checkbox" id="ctrl-show-init" checked onchange="updatePreview()">
+          <span class="toggle-slider"></span>
+        </div>
+      </label>
+      <label class="toggle-row">
+        <span>Timestamp</span>
+        <div class="toggle-switch">
+          <input type="checkbox" id="ctrl-show-time" checked onchange="updatePreview()">
+          <span class="toggle-slider"></span>
+        </div>
+      </label>
+    </div>
+
+    <!-- Border -->
+    <div class="control-section">
+      <div class="section-title">Screen</div>
+      <div class="control-row">
+        <label>Border</label>
+        <select id="ctrl-border" onchange="updatePreview()">
+          <option value="0">White (0)</option>
+          <option value="1">Black (1)</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label>Task alias</label>
+        <input type="text" id="ctrl-alias" value="DeepSeek Balance" oninput="updatePreview()">
+      </div>
+      <div class="control-row">
+        <label>Refresh now</label>
+        <select id="ctrl-refresh" onchange="updatePreview()">
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JSON Output -->
+<div class="output-panel">
+  <div class="output-header">
+    <h2>Generated Canvas API Payload</h2>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="resetToDefaults()">↺ Reset</button>
+      <button class="btn btn-primary" onclick="generateJSON()">⚡ Generate JSON</button>
+      <button class="btn btn-copy" id="btn-copy" onclick="copyJSON()">📋 Copy</button>
+    </div>
+  </div>
+  <pre class="json-output" id="json-output">Click "Generate JSON" to produce the Canvas API payload…</pre>
+</div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+const defaults = {
+  currency: 'CNY',
+  balance: '¥26.07',
+  daily: '↓ -¥0.54',
+  total: '累计消费 -¥74.47',
+  init: '初始充值 ¥100.00',
+  status: '● Active',
+  time: '06/20 08:00',
+  iconSize: 75, iconCol: 100, colGap: 6, rowGap: 2, padding: 8,
+  fontBalance: 28, fontLabel: 18, fontSmall: 17,
+  showStatus: true, showDaily: true, showTotal: true, showInit: false, showTime: false,
+  border: 0, alias: 'DeepSeek Balance', refresh: true, error: false
+};
+
+function getVal(id) { return document.getElementById(id).value; }
+function getInt(id) { return parseInt(document.getElementById(id).value); }
+function getBool(id) { return document.getElementById(id).checked; }
+
+// ============================================================
+// Slider value sync
+// ============================================================
+function updateSlider(el) {
+  const row = el.closest('.control-row');
+  const valSpan = row.querySelector('.slider-value');
+  if (valSpan) valSpan.textContent = el.value + 'px';
+}
+
+// ============================================================
+// Live Preview
+// ============================================================
+function updatePreview() {
+  const s = getState();
+  const p = buildPreviewHTML(s);
+  document.getElementById('preview').innerHTML = p;
+}
+
+function getState() {
+  return {
+    currency:   getVal('ctrl-currency'),
+    balance:    getVal('ctrl-balance'),
+    daily:      getVal('ctrl-daily'),
+    total:      getVal('ctrl-total'),
+    init:       getVal('ctrl-init'),
+    status:     getVal('ctrl-status'),
+    time:       getVal('ctrl-time'),
+    iconSize:   getInt('ctrl-icon-size'),
+    iconCol:    getInt('ctrl-icon-col'),
+    colGap:     getInt('ctrl-col-gap'),
+    rowGap:     getInt('ctrl-row-gap'),
+    padding:    getInt('ctrl-padding'),
+    fontBalance: getInt('ctrl-font-balance'),
+    fontLabel:  getInt('ctrl-font-label'),
+    fontSmall:  getInt('ctrl-font-small'),
+    showStatus: getBool('ctrl-show-status'),
+    showDaily:  getBool('ctrl-show-daily'),
+    showTotal:  getBool('ctrl-show-total'),
+    showInit:   getBool('ctrl-show-init'),
+    showTime:   getBool('ctrl-show-time'),
+    border:     parseInt(getVal('ctrl-border')),
+    alias:      getVal('ctrl-alias'),
+    refresh:    getVal('ctrl-refresh') === 'true',
+  };
+}
+
+function buildPreviewHTML(s) {
+  let balanceLabel = s.currency === 'CNY' ? 'CNY ' + esc(s.balance) : esc(s.balance);
+
+  let rows = '';
+
+  // Row 1: DeepSeek Balance title
+  rows += `
+    <div style="display:flex;align-items:center;gap:4px;font-size:${s.fontLabel}px;line-height:1.2">
+      <span style="font-weight:700">DeepSeek Balance</span>
+    </div>`;
+
+  // Row 2: Balance (with CNY prefix if applicable)
+  rows += `
+    <div style="font-size:${s.fontBalance}px;font-weight:700;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${balanceLabel}</div>`;
+
+  // Row 3: Daily change
+  if (s.showDaily) {
+    rows += `
+    <div style="display:flex;align-items:center;gap:4px;font-size:${s.fontLabel}px;line-height:1.2">
+      <span>今日</span>
+      <span>${esc(s.daily)}</span>
+    </div>`;
+  }
+
+  // Row 4: Total spent
+  if (s.showTotal) {
+    rows += `
+    <div style="font-size:${s.fontLabel}px;line-height:1.2">${esc(s.total)}</div>`;
+  }
+
+  // Row 5: Init recharge
+  if (s.showInit) {
+    rows += `
+    <div style="font-size:${s.fontLabel}px;line-height:1.2">${esc(s.init)}</div>`;
+  }
+
+  // Row 6: Timestamp
+  if (s.showTime) {
+    rows += `
+    <div style="font-size:${s.fontSmall}px;line-height:1.2">${esc(s.time)}</div>`;
+  }
+
+  return `
+  <div style="display:flex;width:296px;height:152px;padding:${s.padding}px;box-sizing:border-box;background:#fff;color:#000;font-family:-apple-system,'Helvetica Neue',sans-serif">
+    <div style="display:flex;gap:${s.colGap}px;width:100%;height:100%;min-width:0;min-height:0">
+      <!-- Left: Icon column with status below -->
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:${s.iconCol}px;height:100%;flex-shrink:0;gap:4px">
+        <img src="https://cdn.deepseek.com/platform/favicon.png"
+             style="width:${s.iconSize}px;height:${s.iconSize}px;image-rendering:pixelated"
+             alt="DeepSeek">
+        ${s.showStatus ? `<span style="font-size:${s.fontSmall}px">${esc(s.status)}</span>` : ''}
+      </div>
+      <!-- Right: Info column -->
+      <div style="display:flex;flex-direction:column;flex:1;min-width:0;justify-content:center;gap:${s.rowGap}px">
+        ${rows}
+      </div>
+    </div>
+  </div>`;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// JSON Generation
+// ============================================================
+function generateJSON() {
+  const s = getState();
+
+  // Build right-side children for windowData
+  const rightChildren = [];
+
+  // Row 1: DeepSeek Balance title
+  rightChildren.push({
+    type: 'div',
+    props: {
+      tw: `flex flex-row items-center gap-[4px] text-${s.fontLabel}-chillduansans`,
+      children: [
+        { type: 'span', props: { tw: 'font-bold', children: 'DeepSeek Balance' } }
+      ]
+    }
+  });
+
+  // Row 2: Balance with CNY prefix
+  const balanceLabel = s.currency === 'CNY' ? 'CNY ' + s.balance : s.balance;
+  rightChildren.push({
+    type: 'div',
+    props: {
+      tw: `text-${s.fontBalance}-chillduansans font-bold leading-[1]`,
+      style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      children: balanceLabel
+    }
+  });
+
+  // Row 3: Daily change
+  if (s.showDaily) {
+    rightChildren.push({
+      type: 'div',
+      props: {
+        tw: `flex flex-row items-center gap-[4px] text-${s.fontLabel}-chillduansans`,
+        children: [
+          { type: 'span', props: { children: '今日' } },
+          { type: 'span', props: { children: s.daily } }
+        ]
+      }
+    });
+  }
+
+  // Row 4: Total spent
+  if (s.showTotal) {
+    rightChildren.push({
+      type: 'div',
+      props: { tw: `text-${s.fontLabel}-chillduansans`, children: s.total }
+    });
+  }
+
+  // Row 5: Init recharge
+  if (s.showInit) {
+    rightChildren.push({
+      type: 'div',
+      props: { tw: `text-${s.fontLabel}-chillduansans`, children: s.init }
+    });
+  }
+
+  // Row 6: Timestamp
+  if (s.showTime) {
+    rightChildren.push({
+      type: 'div',
+      props: { tw: `text-[${s.fontSmall}px]-chillduansans`, children: s.time }
+    });
+  }
+
+  const windowData = {
+    default: [{
+      type: 'div',
+      props: {
+        tw: `flex flex-row w-full h-full min-w-0 min-h-0 bg-white text-black gap-[${s.colGap}px]`,
+        children: [
+          // Left: Icon column with status below
+          (() => {
+            const iconChildren = [{
+              type: 'img',
+              props: {
+                tw: `w-[${s.iconSize}px] h-[${s.iconSize}px] img-dither-none img-levels-4`,
+                src: 'https://cdn.deepseek.com/platform/favicon.png'
+              }
+            }];
+            if (s.showStatus) {
+              iconChildren.push({
+                type: 'span',
+                props: { tw: `text-[${s.fontSmall}px]-chillduansans`, children: s.status }
+              });
+            }
+            return {
+              type: 'div',
+              props: {
+                tw: `flex flex-col items-center justify-center w-[${s.iconCol}px] h-full shrink-0 gap-[4px]`,
+                children: iconChildren
+              }
+            };
+          })(),
+          // Info column
+          {
+            type: 'div',
+            props: {
+              tw: `flex flex-col flex-1 min-w-0 justify-center gap-[${s.rowGap}px]`,
+              children: rightChildren
+            }
+          }
+        ]
+      }
+    }]
+  };
+
+  const payload = {
+    refreshNow: s.refresh,
+    taskAlias: s.alias,
+    border: s.border,
+    layoutFull: { tw: `p-[${s.padding}px]` },
+    windowData: windowData
+  };
+
+  const json = JSON.stringify(payload, null, 2);
+  document.getElementById('json-output').innerHTML = syntaxHighlight(json);
+  document.getElementById('btn-copy').classList.remove('copied');
+  document.getElementById('btn-copy').innerHTML = '📋 Copy';
+}
+
+function syntaxHighlight(json) {
+  return json
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span class="json-key">$1</span>:')
+    .replace(/: ("(?:[^"\\]|\\.)*")/g, ': <span class="json-str">$1</span>')
+    .replace(/: (\d+\.?\d*)/g, ': <span class="json-num">$1</span>')
+    .replace(/: (true|false)/g, ': <span class="json-bool">$1</span>')
+    .replace(/: (null)/g, ': <span class="json-null">$1</span>');
+}
+
+async function copyJSON() {
+  const pre = document.getElementById('json-output');
+  const text = pre.textContent || '';
+  if (!text || text.startsWith('Click')) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById('btn-copy');
+    btn.classList.add('copied');
+    btn.innerHTML = '✓ Copied!';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '📋 Copy';
+    }, 2000);
+  } catch {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+}
+
+function resetToDefaults() {
+  document.getElementById('ctrl-currency').value = defaults.currency;
+  document.getElementById('ctrl-balance').value = defaults.balance;
+  document.getElementById('ctrl-daily').value = defaults.daily;
+  document.getElementById('ctrl-total').value = defaults.total;
+  document.getElementById('ctrl-init').value = defaults.init;
+  document.getElementById('ctrl-status').value = defaults.status;
+  document.getElementById('ctrl-time').value = defaults.time;
+
+  ['ctrl-icon-size','ctrl-icon-col','ctrl-col-gap','ctrl-row-gap','ctrl-padding',
+   'ctrl-font-balance','ctrl-font-label','ctrl-font-small'].forEach(id => {
+    const el = document.getElementById(id);
+    const key = id.replace('ctrl-','').replace(/-/g,'');
+    const map = { iconsize:'iconSize', iconcol:'iconCol', colgap:'colGap',
+                  rowgap:'rowGap', padding:'padding', fontbalance:'fontBalance',
+                  fontlabel:'fontLabel', fontsmall:'fontSmall' };
+    el.value = defaults[map[key]];
+    updateSlider(el);
+  });
+
+  ['ctrl-show-status','ctrl-show-daily','ctrl-show-total','ctrl-show-init','ctrl-show-time']
+    .forEach(id => { document.getElementById(id).checked = true; });
+
+  document.getElementById('ctrl-border').value = '0';
+  document.getElementById('ctrl-alias').value = 'DeepSeek Balance';
+  document.getElementById('ctrl-refresh').value = 'true';
+
+  updatePreview();
+  document.getElementById('json-output').innerHTML = 'Click "Generate JSON" to produce the Canvas API payload…';
+  document.getElementById('btn-copy').classList.remove('copied');
+  document.getElementById('btn-copy').innerHTML = '📋 Copy';
+}
+
+// ============================================================
+// Init
+// ============================================================
+updatePreview();
+</script>
+</body>
+</html>

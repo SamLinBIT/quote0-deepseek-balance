@@ -1,0 +1,26 @@
+# Secrets
+.env
+
+# Data (auto-generated, contains real financial data)
+data/
+
+# ZIP imports
+*.zip
+
+# Misc non-project files
+SKILL.md
+
+# Logs
+logs/
+
+# macOS
+.DS_Store
+
+# Claude
+.claude/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
