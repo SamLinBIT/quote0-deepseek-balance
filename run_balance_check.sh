@@ -21,17 +21,17 @@ export CURRENCY="${CURRENCY:-CNY}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Check if any argument contains --dry-run
-DRY_RUN=false
+# Check if we should print to terminal (interactive commands)
+INTERACTIVE=false
 for arg in "$@"; do
-    [[ "$arg" == "--dry-run" ]] && DRY_RUN=true
+    [[ "$arg" == "--dry-run" || "$arg" == "--import-usage" ]] && INTERACTIVE=true
 done
 
-if $DRY_RUN; then
-    # Dry-run: print directly to terminal
+if $INTERACTIVE; then
+    # Interactive: print directly to terminal
     "${SCRIPT_DIR}/.venv/bin/python" -m deepseek_balance.main "$@"
 else
-    # Normal run: log to file (for cron)
+    # Cron: log to file
     mkdir -p logs
     "${SCRIPT_DIR}/.venv/bin/python" -m deepseek_balance.main "$@" >> "${SCRIPT_DIR}/logs/balance_cron.log" 2>&1
 fi
