@@ -1,5 +1,7 @@
 """DeepSeek API client for fetching account balance."""
 
+from __future__ import annotations
+
 import json
 import ssl
 import time

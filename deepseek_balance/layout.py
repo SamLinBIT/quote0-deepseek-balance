@@ -1,5 +1,7 @@
 """Canvas API windowData JSON builder for 296x152 e-ink screen."""
 
+from __future__ import annotations
+
 from decimal import Decimal
 from typing import Any
 

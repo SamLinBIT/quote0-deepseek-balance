@@ -5,6 +5,8 @@ Usage:
     python -m deepseek_balance.main --dry-run # Print payload without pushing
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging

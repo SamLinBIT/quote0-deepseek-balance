@@ -1,5 +1,7 @@
 """Balance history persistence and consumption calculations."""
 
+from __future__ import annotations
+
 import json
 import os
 import shutil

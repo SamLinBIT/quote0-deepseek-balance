@@ -1,5 +1,7 @@
 """Usage cost data management for monthly consumption tracking."""
 
+from __future__ import annotations
+
 import csv
 import io
 import json
