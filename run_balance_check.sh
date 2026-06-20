@@ -21,19 +21,27 @@ export CURRENCY="${CURRENCY:-CNY}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Bootstrap Python venv if missing
-PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python"
-if [[ ! -x "$PYTHON_BIN" ]]; then
-    if command -v uv &>/dev/null; then
-        echo "[bootstrap] Creating venv with uv..."
-        uv venv --quiet
-    elif command -v python3 &>/dev/null; then
-        echo "[bootstrap] Creating venv with python3..."
-        python3 -m venv .venv
+# Bootstrap Python environment
+PYTHON_BIN=""
+VENV_PYTHON="${SCRIPT_DIR}/.venv/bin/python"
+
+if [[ -x "$VENV_PYTHON" ]]; then
+    PYTHON_BIN="$VENV_PYTHON"
+elif command -v uv &>/dev/null; then
+    echo "[bootstrap] Creating venv with uv..."
+    uv venv --quiet && PYTHON_BIN="$VENV_PYTHON"
+elif command -v python3 &>/dev/null; then
+    echo "[bootstrap] Creating venv with python3..."
+    if python3 -m venv .venv 2>/dev/null; then
+        PYTHON_BIN="$VENV_PYTHON"
     else
-        echo "[ERROR] Neither 'uv' nor 'python3' found. Install Python 3.10+ first."
-        exit 1
+        echo "[bootstrap] venv unavailable (python3-venv not installed)"
+        echo "[bootstrap] Falling back to system python3 (project has no deps)"
+        PYTHON_BIN="$(command -v python3)"
     fi
+else
+    echo "[ERROR] python3 not found. Install Python 3.10+ first."
+    exit 1
 fi
 
 # Check if we should print to terminal (interactive commands)
