@@ -1,5 +1,7 @@
 """Dot Canvas API client for pushing content to Quote/0 device."""
 
+from __future__ import annotations
+
 import json
 import ssl
 import urllib.request
