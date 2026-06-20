@@ -21,6 +21,21 @@ export CURRENCY="${CURRENCY:-CNY}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Bootstrap Python venv if missing
+PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+    if command -v uv &>/dev/null; then
+        echo "[bootstrap] Creating venv with uv..."
+        uv venv --quiet
+    elif command -v python3 &>/dev/null; then
+        echo "[bootstrap] Creating venv with python3..."
+        python3 -m venv .venv
+    else
+        echo "[ERROR] Neither 'uv' nor 'python3' found. Install Python 3.10+ first."
+        exit 1
+    fi
+fi
+
 # Check if we should print to terminal (interactive commands)
 INTERACTIVE=false
 for arg in "$@"; do
@@ -29,9 +44,9 @@ done
 
 if $INTERACTIVE; then
     # Interactive: print directly to terminal
-    "${SCRIPT_DIR}/.venv/bin/python" -m deepseek_balance.main "$@"
+    "$PYTHON_BIN" -m deepseek_balance.main "$@"
 else
     # Cron: log to file
     mkdir -p logs
-    "${SCRIPT_DIR}/.venv/bin/python" -m deepseek_balance.main "$@" >> "${SCRIPT_DIR}/logs/balance_cron.log" 2>&1
+    "$PYTHON_BIN" -m deepseek_balance.main "$@" >> "${SCRIPT_DIR}/logs/balance_cron.log" 2>&1
 fi
