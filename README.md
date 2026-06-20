@@ -74,6 +74,7 @@ export DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxx"
 export DOT_API_KEY="xxxxxxxxxxxxxxxx"
 export DOT_DEVICE_ID="xxxxxxxxxxxxxxxx"
 export CURRENCY="CNY"              # CNY 或 USD，默认 CNY
+export TZ_OFFSET="8"               # UTC 偏移量（小时），默认 8（UTC+8）
 ```
 
 建议将以上命令写入 `~/.zshrc` 或 `~/.bashrc`，避免每次手动导出。

@@ -11,7 +11,7 @@ import argparse
 import json
 import logging
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from deepseek_balance.config import load_config
@@ -75,12 +75,13 @@ def main() -> int:
     if args.import_usage:
         return _handle_import_usage(args.import_usage)
 
-    timestamp = datetime.now().strftime("%m/%d %H:%M")
-
     # 1. Load config
     config = load_config()
     logger.info("Configuration loaded")
     logger.info("Currency preference: %s", config.currency)
+
+    tz = timezone(timedelta(hours=config.tz_offset))
+    timestamp = datetime.now(tz).strftime("%m/%d %H:%M")
 
     # 2. Load history (always, for both normal display and error fallback)
     history = load_history()

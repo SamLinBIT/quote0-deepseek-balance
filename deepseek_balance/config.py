@@ -14,6 +14,7 @@ class Config:
     dot_device_id: str
     initial_recharge: float | None
     currency: str  # "CNY" or "USD"
+    tz_offset: int  # UTC offset in hours, e.g. 8 = UTC+8
 
 
 def load_config() -> Config:
@@ -46,6 +47,15 @@ def load_config() -> Config:
     if currency not in ("CNY", "USD"):
         errors.append(f"CURRENCY must be CNY or USD, got: {currency}")
 
+    tz_offset_str = os.environ.get("TZ_OFFSET", "8").strip()
+    tz_offset: int = 8
+    try:
+        tz_offset = int(tz_offset_str)
+        if not -12 <= tz_offset <= 14:
+            errors.append(f"TZ_OFFSET must be between -12 and 14, got: {tz_offset}")
+    except ValueError:
+        errors.append(f"TZ_OFFSET is not a valid integer: {tz_offset_str}")
+
     if errors:
         for err in errors:
             print(f"[ERROR] {err}", file=sys.stderr)
@@ -56,6 +66,7 @@ def load_config() -> Config:
         print("\nOptional:", file=sys.stderr)
         print("  INITIAL_RECHARGE  - Total amount ever recharged (for total spent calc)", file=sys.stderr)
         print("  CURRENCY          - Preferred currency: CNY (default) or USD", file=sys.stderr)
+        print("  TZ_OFFSET         - UTC offset in hours (default: 8 = UTC+8)", file=sys.stderr)
         sys.exit(1)
 
     return Config(
@@ -64,4 +75,5 @@ def load_config() -> Config:
         dot_device_id=dot_device_id,
         initial_recharge=initial_recharge,
         currency=currency,
+        tz_offset=tz_offset,
     )

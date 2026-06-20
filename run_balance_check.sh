@@ -17,6 +17,7 @@ export DOT_API_KEY="${DOT_API_KEY:-}"
 export DOT_DEVICE_ID="${DOT_DEVICE_ID:-}"
 export INITIAL_RECHARGE="${INITIAL_RECHARGE:-}"
 export CURRENCY="${CURRENCY:-CNY}"
+export TZ_OFFSET="${TZ_OFFSET:-8}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
