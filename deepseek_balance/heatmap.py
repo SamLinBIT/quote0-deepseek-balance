@@ -43,7 +43,8 @@ GRID_H = ROWS * CELL_H + (ROWS - 1) * GAP_Y  # 7×13 + 6×1 = 97
 # cell with a distinct black-and-white pattern.  Patterns are chosen to be
 # visually distinguishable at 36×13 px cell size.
 #
-# Level 0 = no spending (hollow), 4 = peak (solid black).
+# Level 0 = no spending (hollow), 1 = 5-dot plus (~17%),
+# 2 = horizontal stripes (~33%), 3 = checkerboard (50%), 4 = solid black.
 
 
 def _cell_pattern(x: int, y: int, level: int) -> int:
@@ -54,8 +55,10 @@ def _cell_pattern(x: int, y: int, level: int) -> int:
     if level == 0:
         return 255  # all white — "no spending today"
     elif level == 1:
-        # Sparse dots — light texture
-        return 0 if (x % 5 == 0 and y % 4 == 0) else 255
+        # 5-dot plus (+) pattern — light, structured texture (~17% density)
+        tx, ty = x % 6, y % 5
+        # plus centered at (2,2): center + 4 orthogonal arms
+        return 0 if (tx, ty) in ((2, 1), (1, 2), (2, 2), (3, 2), (2, 3)) else 255
     elif level == 2:
         # Horizontal stripe every 3rd row — medium texture
         return 0 if (y % 3 == 0) else 255
@@ -246,6 +249,33 @@ def gather_30day_costs() -> dict[str, Decimal]:
     return costs
 
 
+def _compute_level_thresholds(positive_costs: list[Decimal]) -> tuple[float, float, float]:
+    """Return (t1, t2, t3) boundaries for levels 1/2, 2/3, 3/4.
+
+    Uses quartile-based thresholds (P25, P50, P75) when ≥10 data points are
+    available, ensuring roughly equal distribution across heat levels.
+    Falls back to fixed-ratio thresholds (25%, 50%, 75% of max) for small samples.
+    """
+    sorted_costs = sorted(float(c) for c in positive_costs)
+    n = len(sorted_costs)
+
+    if n < 10:
+        # Fallback: fixed ratios of max (preserves current behavior)
+        max_val = sorted_costs[-1] if n > 0 else 0.0
+        return (max_val * 0.25, max_val * 0.50, max_val * 0.75)
+
+    # Linear interpolation percentile (no numpy needed)
+    def _percentile(p: float) -> float:
+        k = (n - 1) * p / 100.0
+        f = int(k)
+        c = k - f
+        if f + 1 < n:
+            return sorted_costs[f] + c * (sorted_costs[f + 1] - sorted_costs[f])
+        return sorted_costs[f]
+
+    return (_percentile(25), _percentile(50), _percentile(75))
+
+
 def _assign_heat_levels(
     costs: dict[str, Decimal],
 ) -> tuple[list[list[int | None]], list[list[Decimal | None]], list[str], list[int], int, int | None, int | None]:
@@ -256,7 +286,6 @@ def _assign_heat_levels(
         values:     7×6 Decimal costs (for tooltip / avg calc)
         day_labels: per-row labels ["一","二",…,"日"]
         col_dates:  list of 6 date strings for the first day in each column
-        max_cost:   max cost in the window
         today_col, today_row: position of today's cell (or None)
     """
     today = date.today()
@@ -270,8 +299,7 @@ def _assign_heat_levels(
     window_end = today
     days_in_window = (window_end - window_start).days + 1
     num_cols = (days_in_window + 6) // 7  # ceiling division
-    if num_cols < COLS:
-        num_cols = COLS  # always at least 6 cols for visual consistency
+    # Don't force extra columns — padding will be added on the left during slicing
 
     # Fill grid
     grid: list[list[int | None]] = [[None for _ in range(num_cols)] for _ in range(ROWS)]
@@ -289,9 +317,9 @@ def _assign_heat_levels(
         if 0 <= col < num_cols and 0 <= row < ROWS:
             values[row][col] = cost
 
-    # Compute max for scaling (ignore None / zero)
+    # Compute thresholds (dynamic quartile when ≥10 data points, fixed-ratio otherwise)
     all_costs = [c for c in costs.values() if c > 0]
-    max_cost = max(all_costs) if all_costs else Decimal("0")
+    t1, t2, t3 = _compute_level_thresholds(all_costs)
 
     # Assign levels
     today_col, today_row = None, None
@@ -300,15 +328,15 @@ def _assign_heat_levels(
             v = values[row][col]
             if v is None:
                 grid[row][col] = None
-            elif v == 0 or max_cost == 0:
+            elif v == 0 or not all_costs:
                 grid[row][col] = 0
             else:
-                ratio = float(v) / float(max_cost)
-                if ratio <= 0.25:
+                fv = float(v)
+                if fv <= t1:
                     grid[row][col] = 1
-                elif ratio <= 0.50:
+                elif fv <= t2:
                     grid[row][col] = 2
-                elif ratio <= 0.75:
+                elif fv <= t3:
                     grid[row][col] = 3
                 else:
                     grid[row][col] = 4
@@ -338,25 +366,14 @@ def _assign_heat_levels(
                 first_col = min(first_col, col)
                 last_col = max(last_col, col)
 
-    # Ensure we show exactly COLS columns, but try to include all data
-    if last_col - first_col + 1 <= COLS:
-        # Center the data
-        data_span = last_col - first_col + 1
-        pad_left = (COLS - data_span) // 2
-        start_col = first_col - pad_left
-        end_col = start_col + COLS
-    else:
-        # More columns than COLS — prioritize recent data (right side)
-        end_col = last_col + 1
-        start_col = end_col - COLS
+    # Always right-align: today's column is the rightmost visible column
+    end_col = last_col + 1
+    start_col = end_col - COLS
 
-    # Clamp to valid range
-    if start_col < 0:
-        start_col = 0
-        end_col = min(COLS, num_cols)
+    # Clamp end_col to actual data columns (start_col can be negative — left padding)
     if end_col > num_cols:
         end_col = num_cols
-        start_col = max(0, end_col - COLS)
+        start_col = end_col - COLS
 
     # Slice grid, values, col_dates to [start_col:end_col]
     sliced_grid = [[grid[row][col] if start_col <= col < end_col else None for col in range(COLS)] for row in range(ROWS)]
@@ -376,7 +393,7 @@ def _assign_heat_levels(
                 new_row.append(None)
         sliced_grid[row] = new_row
 
-    sliced_values = [[values[row][start_col + col] if (start_col + col) < num_cols else None for col in range(COLS)] for row in range(ROWS)]
+    sliced_values = [[values[row][start_col + col] if (0 <= start_col + col < num_cols) else None for col in range(COLS)] for row in range(ROWS)]
     sliced_dates = col_dates[start_col:end_col]
 
     # Recalculate today position in sliced grid
@@ -394,7 +411,6 @@ def _assign_heat_levels(
         sliced_values,
         day_labels,
         sliced_dates,
-        max_cost,
         today_col_sliced,
         today_row_sliced,
     )
@@ -519,9 +535,9 @@ def render_28day_heatmap(
     grid: list[list[int | None]] = [[None for _ in range(D4_COLS)] for _ in range(D4_ROWS)]
     day_labels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
-    # Compute max for scaling (exclude future dates with no cost)
+    # Compute thresholds (dynamic quartile when ≥10 data points, fixed-ratio otherwise)
     all_costs = [c for c in costs.values() if c > 0]
-    max_cost = max(all_costs) if all_costs else Decimal("0")
+    t1, t2, t3 = _compute_level_thresholds(all_costs)
 
     today_col, today_row = None, None
     for i in range(28):
@@ -537,13 +553,13 @@ def render_28day_heatmap(
                 grid[row][col] = None  # future → no fill
             elif cost == 0:
                 grid[row][col] = 0
-            elif max_cost > 0:
-                ratio = float(cost) / float(max_cost)
-                if ratio <= 0.25:
+            elif all_costs:
+                fv = float(cost)
+                if fv <= t1:
                     grid[row][col] = 1
-                elif ratio <= 0.50:
+                elif fv <= t2:
                     grid[row][col] = 2
-                elif ratio <= 0.75:
+                elif fv <= t3:
                     grid[row][col] = 3
                 else:
                     grid[row][col] = 4
@@ -611,7 +627,6 @@ def build_heatmap_payload(
         values,
         day_labels,
         col_dates,
-        max_cost,
         today_col,
         today_row,
     ) = _assign_heat_levels(costs)
@@ -784,6 +799,7 @@ def build_heatmap_payload(
         "refreshNow": True,
         "taskAlias": "DeepSeek Heatmap",
         "border": 0,
+        "link": "https://platform.deepseek.com",
         "layoutFull": {"tw": "p-0"},
         "windowData": window_data,
     }

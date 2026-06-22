@@ -205,7 +205,7 @@ def build_dashboard_payload(
     legend_items.append(
         _element(
             "span",
-            tw="text-11-chillksans shrink-0",
+            tw="text-12-chillksans font-bold shrink-0",
             style={"marginLeft": "auto"},
             children=f"今日 {today_cost_str}",
         )
@@ -240,6 +240,7 @@ def build_dashboard_payload(
         "refreshNow": True,
         "taskAlias": "DeepSeek Dashboard",
         "border": 0,
+        "link": "https://platform.deepseek.com",
         "layoutFull": {"tw": "p-[8px]"},
         "windowData": window_data,
     }

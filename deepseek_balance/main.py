@@ -40,6 +40,7 @@ from deepseek_balance.usage_data import (
 )
 from deepseek_balance.heatmap import gather_30day_costs, build_heatmap_payload
 from deepseek_balance.dashboard import build_dashboard_payload
+
 from deepseek_balance.dot_push import (
     push_canvas,
     DotPushError,

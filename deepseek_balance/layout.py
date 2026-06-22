@@ -173,6 +173,7 @@ def build_canvas_payload(
         "refreshNow": True,
         "taskAlias": "DeepSeek Balance",
         "border": 0,
+        "link": "https://platform.deepseek.com",
         "layoutFull": {"tw": "p-[8px]"},
         "windowData": window_data,
     }
@@ -248,6 +249,7 @@ def _build_error_payload(
         "refreshNow": True,
         "taskAlias": "DeepSeek Balance",
         "border": 0,
+        "link": "https://platform.deepseek.com",
         "layoutFull": {"tw": "p-[8px]"},
         "windowData": window_data,
     }
