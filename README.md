@@ -1,10 +1,18 @@
 # DeepSeek Balance Dashboard for Quote/0
 
-在 [MindReset Dot Quote/0](https://mindreset.tech/) 电子墨水屏上显示 DeepSeek API 账户余额和消费数据。
+在 [MindReset Dot Quote/0](https://mindreset.tech/) 电子墨水屏上显示 DeepSeek API 账户余额和消费数据，提供三种视图轮换使用。
 
-> **屏幕规格**：296×152 像素，125 PPI，4 级灰度
+> **屏幕规格**：296×152 像素，125 PPI，实际只有黑白两色（无法渲染灰阶）
 
-## 屏幕显示内容
+## 视图概览
+
+| 视图 | CLI 标志 | 说明 |
+|------|----------|------|
+| 余额仪表盘 | （默认，无标志） | 双栏布局：图标 + 余额 + 今日/本月消费 |
+| 30 日热力图 | `--heatmap` | 7 列 GitHub 风格热力图，展示近 30 天每日消费 |
+| 综合仪表盘 | `--dashboard` | 左栏余额 + 右栏 4 列 × 7 行 28 天热力图 |
+
+### 1. 余额仪表盘（默认视图）
 
 ```
 ┌──────────────────────────────────────────┐
@@ -25,25 +33,44 @@
 - **右栏**：标题 → 余额 → 今日消费 → 本月消费
 - **API 异常时**：显示上次已知余额 + 错误信息，图标变暗
 
+### 2. 30 日热力图 (`--heatmap`)
+
+GitHub 风格热力图，7 列（周一~周日）展示近 30 天 DeepSeek API 消费强度。
+
+- 5 级二元图案填充（点阵 → 横纹 → 棋盘格 → 全黑），在单色墨水屏上区分消费等级
+- 每列顶部标注该周起始日期
+- 今日格子带自适应环形标记（浅色底黑环，深色底白环）
+- 图例行显示色块 + 今日消费金额
+
+### 3. 综合仪表盘 (`--dashboard`)
+
+余额 + 热力图合并视图，一屏展示完整信息。
+
+- **左栏**（70px）：图标 50×50 + 状态 + 时间 + 余额
+- **右栏**：4 列 × 7 行 28 天热力图，最后一列始终为当前周
+- 未来日期留空，图例仅显示 5 级色块 + 今日消费
+
 ## 项目结构
 
 ```
 quote0/
 ├── deepseek_balance/
-│   ├── main.py              # 编排入口
+│   ├── main.py              # 编排入口（三视图调度）
 │   ├── config.py            # 环境变量加载
 │   ├── balance_api.py       # DeepSeek 余额 API 客户端
 │   ├── history.py           # 余额历史快照 + 日消费计算
 │   ├── usage_data.py        # 月消费跟踪（CSV 导入 + 增量更新）
-│   ├── layout.py            # Canvas API 界面构建
+│   ├── layout.py            # 余额仪表盘 Canvas 界面构建
+│   ├── heatmap.py           # 热力图 PNG 生成 + Payload 构建
+│   ├── dashboard.py         # 综合仪表盘（余额 + 28 天热力图）
 │   └── dot_push.py          # Quote/0 设备推送
 ├── run_balance_check.sh     # cron 入口脚本
+├── .env                      # 密钥配置（不提交，chmod 600）
 ├── data/
 │   ├── balance_history.json # 每日余额快照（自动生成）
-│   └── usage_history.json   # 月消费数据（导入后生成）
+│   └── usage_history.json   # 月消费数据 + 导入的每日明细
 ├── logs/
 │   └── balance_cron.log     # cron 运行日志
-├── layout_editor.html       # WYSIWYG 布局编辑器（开发用）
 └── pyproject.toml
 ```
 
@@ -67,17 +94,23 @@ uv venv
 | `DOT_API_KEY` | MindReset Content Studio → 设备设置 → API 密钥 |
 | `DOT_DEVICE_ID` | MindReset Content Studio → 设备详情 → 序列号 |
 
-### 3. 设置环境变量
+### 3. 配置 `.env` 文件
 
 ```bash
-export DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxx"
-export DOT_API_KEY="xxxxxxxxxxxxxxxx"
-export DOT_DEVICE_ID="xxxxxxxxxxxxxxxx"
-export CURRENCY="CNY"              # CNY 或 USD，默认 CNY
-export TZ_OFFSET="8"               # UTC 偏移量（小时），默认 8（UTC+8）
+# 在项目根目录创建 .env 文件（已在 .gitignore，不会被提交）
+cat > .env << 'EOF'
+DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxx"
+DOT_API_KEY="xxxxxxxxxxxxxxxx"
+DOT_DEVICE_ID="xxxxxxxxxxxxxxxx"
+CURRENCY="CNY"              # CNY 或 USD，默认 CNY
+TZ_OFFSET="8"               # UTC 偏移量（小时），默认 8（UTC+8）
+EOF
+
+# 收紧权限，防止其他用户读取
+chmod 600 .env
 ```
 
-建议将以上命令写入 `~/.zshrc` 或 `~/.bashrc`，避免每次手动导出。
+> `.env` 会被 `run_balance_check.sh` 自动加载。终端手动运行和 crontab 定时任务都无需额外设置环境变量。
 
 ### 4. 导入当月用量数据
 
@@ -110,35 +143,42 @@ Saved to data/usage_history.json
 
 ## 日常运行
 
-### 方式一：个人电脑定时推送
+### Crontab 定时推送
+
+密钥已由脚本从 `.env` 自动加载，crontab 只需配置执行时间即可。示例 — 三视图轮换推送：
 
 ```bash
-# 编辑 crontab
 crontab -e
-
-# 每天早上 8:00 运行
-0 8 * * * /path/to/quote0/run_balance_check.sh
 ```
 
-macOS 用户注意：cron 不会自动加载 shell 环境变量，需在脚本开头或 crontab 中显式设置。
-
-### 方式二：服务器部署
-
-```bash
-# SSH 到服务器，克隆项目，同上完成初始化后：
-crontab -e
-
-# 服务器时区通常是 UTC，以下为北京时间 8:00（UTC 0:00）
-0 0 * * * /path/to/quote0/run_balance_check.sh
 ```
+# 余额仪表盘 + 综合仪表盘 + 热力图，每天各 3 次（北京时间，服务器为 UTC）
+# 余额仪表盘：8:00 / 14:00 / 23:00
+0   0 * * * /home/ubuntu/quote0-deepseek-balance/run_balance_check.sh
+0   6 * * * /home/ubuntu/quote0-deepseek-balance/run_balance_check.sh
+58 14 * * * /home/ubuntu/quote0-deepseek-balance/run_balance_check.sh
+
+# 综合仪表盘：10:00 / 18:00
+0   2 * * * /home/ubuntu/quote0-deepseek-balance/run_balance_check.sh --dashboard
+0  10 * * * /home/ubuntu/quote0-deepseek-balance/run_balance_check.sh --dashboard
+
+# 热力图：每天一次（23:00 全天数据完备后）
+59 14 * * * /home/ubuntu/quote0-deepseek-balance/run_balance_check.sh --heatmap
+```
+
+> 脚本内已设置 `PATH` 并从 `.env` 加载密钥，无需在 crontab 中重复配置环境变量。服务器时区通常为 UTC，上例已将北京时间换算为 UTC。可根据需要调整三视图的推送频率和顺序。
 
 ### 日常命令参考
 
 | 命令 | 用途 |
 |------|------|
-| `./run_balance_check.sh` | 完整运行（获取 + 存储 + 推送） |
+| `./run_balance_check.sh` | 余额仪表盘（默认视图） |
 | `./run_balance_check.sh --dry-run` | 仅打印 JSON，不推送 |
+| `./run_balance_check.sh --heatmap` | 30 日消费热力图 |
+| `./run_balance_check.sh --dashboard` | 综合仪表盘（余额 + 28 天热力图） |
 | `./run_balance_check.sh --import-usage <zip>` | 导入 DeepSeek 月度用量报告 |
+
+> `--heatmap` 和 `--dashboard` 也支持 `--dry-run` 预览。
 
 ## 数据文件说明
 
@@ -214,6 +254,22 @@ crontab -e
 ## 技术选型
 
 - **零外部依赖**：仅使用 Python 标准库（`urllib`, `json`, `decimal`, `csv`, `zipfile`）
+- **PNG 生成**：纯 Python 标准库（`struct` + `zlib`）构建灰度 PNG，无需 Pillow
+- **二元图案填充**：热力图在单色墨水屏上通过点阵、横纹、棋盘格等图案区分 5 级消费强度，而非依赖灰阶抖动
 - **Decimal 精度**：所有金额计算使用 `Decimal`，避免浮点精度问题
 - **先存后推**：先保存历史快照再推送屏幕，确保数据不丢失
 - **优雅降级**：API 不可用时仍推送错误状态，并利用本地历史数据显示上次余额
+
+## 墨水屏灰度方案说明
+
+Quote/0 屏幕虽标称 4 级灰度，实测 Canvas API 对 `div` 颜色和 `img` 抖动处理均只能输出纯黑/纯白两色。因此热力图采用**二值图案填充**替代传统灰度：
+
+| 等级 | 图案 | 算法 |
+|------|------|------|
+| 0 | 全白 | 无消费 |
+| 1 | 稀疏点阵 | `(x%5==0 and y%4==0)` |
+| 2 | 水平条纹 | `(y%3==0)` |
+| 3 | 棋盘格 | `((x//2)+(y//2))%2==0` |
+| 4 | 全黑 | 消费峰值 |
+
+所有图案在 Python 中绘制到像素数组后编码为 PNG，以 `img` 元素推送到设备，配合 `img-dither-none img-levels-2` 类保持图案原样不被抖动破坏。

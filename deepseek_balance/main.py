@@ -11,7 +11,7 @@ import argparse
 import json
 import logging
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from deepseek_balance.config import load_config
@@ -38,6 +38,8 @@ from deepseek_balance.usage_data import (
     get_monthly_consumption,
     update_monthly_consumption,
 )
+from deepseek_balance.heatmap import gather_30day_costs, build_heatmap_payload
+from deepseek_balance.dashboard import build_dashboard_payload
 from deepseek_balance.dot_push import (
     push_canvas,
     DotPushError,
@@ -69,6 +71,16 @@ def main() -> int:
         metavar="ZIP",
         help="Import monthly cost data from a DeepSeek usage zip (e.g. usage_data_2026_6.zip)",
     )
+    parser.add_argument(
+        "--heatmap",
+        action="store_true",
+        help="Push 30-day spending heatmap to device (separate view from balance dashboard)",
+    )
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Push combined dashboard (balance + 28-day heatmap) to device",
+    )
     args = parser.parse_args()
 
     # Handle --import-usage (one-time data import)
@@ -80,8 +92,13 @@ def main() -> int:
     logger.info("Configuration loaded")
     logger.info("Currency preference: %s", config.currency)
 
-    tz = timezone(timedelta(hours=config.tz_offset))
-    timestamp = datetime.now(tz).strftime("%m/%d %H:%M")
+    # 1a. Handle --heatmap and --dashboard (separate views)
+    if args.heatmap:
+        return _handle_heatmap(args, config)
+    if args.dashboard:
+        return _handle_dashboard(args, config)
+
+    timestamp = datetime.now().strftime("%m/%d %H:%M")
 
     # 2. Load history (always, for both normal display and error fallback)
     history = load_history()
@@ -201,6 +218,88 @@ def main() -> int:
     )
 
     # 7. Push to device
+    return _handle_push(args, config, payload, "dashboard")
+
+
+def _handle_heatmap(args: argparse.Namespace, config) -> int:
+    """Gather 30-day cost data and push the heatmap to the device."""
+    logger.info("Gathering 30-day cost data for heatmap...")
+    costs = gather_30day_costs()
+    logger.info("Collected cost data for %d days", len(costs))
+
+    payload = build_heatmap_payload(costs, config.currency)
+    return _handle_push(args, config, payload, "heatmap")
+
+
+def _handle_dashboard(args: argparse.Namespace, config) -> int:
+    """Fetch balance, gather 28-day costs, and push the combined dashboard."""
+    timestamp = datetime.now().strftime("%m/%d %H:%M")
+
+    if args.dry_run:
+        # Use placeholder balance data — no API calls
+        balance_display = _format_balance(Decimal("20.55"), config.currency)
+        is_available = True
+        status_text = "✓ Active"
+        error_message = None
+    else:
+        from deepseek_balance.balance_api import (
+            fetch_balance,
+            DeepSeekError,
+            DeepSeekAuthError,
+            DeepSeekNetworkError,
+            DeepSeekParseError,
+        )
+        from deepseek_balance.history import load_history
+
+        error_message = None
+        balance = None
+        balance_display = None
+        is_available = False
+
+        try:
+            balance = fetch_balance(config.deepseek_api_key)
+            logger.info("Balance fetched: %s %s", balance.currency, balance.total_balance)
+            balance_display = _format_balance(balance.total_balance, config.currency)
+            is_available = balance.is_available
+        except DeepSeekAuthError as e:
+            logger.error("DeepSeek auth error: %s", e)
+            error_message = "Invalid DeepSeek API key"
+        except DeepSeekParseError as e:
+            logger.error("DeepSeek parse error: %s", e)
+            error_message = "Invalid balance data received"
+        except DeepSeekNetworkError as e:
+            logger.error("DeepSeek network error: %s", e)
+            error_message = "DeepSeek service unavailable"
+        except DeepSeekError as e:
+            logger.error("DeepSeek error: %s", e)
+            error_message = f"Error: {e}"
+
+        if error_message or balance is None:
+            history = load_history()
+            if history.snapshots:
+                last = history.snapshots[-1]
+                last_val = _format_balance(Decimal(last.total_balance), config.currency)
+                short_date = last.date[-5:].replace("-", "/")
+                balance_display = f"{last_val} ({short_date})"
+            else:
+                balance_display = "--.--"
+
+        status_text = "✓ Active" if (balance and balance.is_available) else "✗ Offline"
+
+    # Gather 28-day costs
+    costs = gather_30day_costs()
+
+    # Build payload
+    payload = build_dashboard_payload(
+        balance_display=balance_display or "--.--",
+        currency=config.currency,
+        is_available=is_available,
+        status_text=status_text,
+        error_message=error_message,
+        timestamp=timestamp,
+        costs=costs,
+    )
+
     return _handle_push(args, config, payload, "dashboard")
 
 

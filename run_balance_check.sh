@@ -4,25 +4,33 @@ set -euo pipefail
 # ============================================================
 # DeepSeek Balance Dashboard — cron entry point
 #
-# Set your real values below or export them before running.
-# DO NOT commit this file if it contains real API keys.
-#
-# Usage:
-#   ./run_balance_check.sh           # Full run
-#   ./run_balance_check.sh --dry-run # Print payload only
+# Secrets are read from .env in the script directory.
 # ============================================================
-
-export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}"
-export DOT_API_KEY="${DOT_API_KEY:-}"
-export DOT_DEVICE_ID="${DOT_DEVICE_ID:-}"
-export INITIAL_RECHARGE="${INITIAL_RECHARGE:-}"
-export CURRENCY="${CURRENCY:-CNY}"
-export TZ_OFFSET="${TZ_OFFSET:-8}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Bootstrap Python environment
+# --- Load secrets --------------------------------------------------
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+    set -a            # auto-export all variables
+    source "${SCRIPT_DIR}/.env"
+    set +a
+else
+    echo "[ERROR] .env file not found at ${SCRIPT_DIR}/.env"
+    exit 1
+fi
+
+# --- Timezone (all Python time calls use this) ----------------------
+export TZ='Asia/Shanghai'
+
+# --- Apply defaults for optional vars ------------------------------
+export CURRENCY="${CURRENCY:-CNY}"
+export INITIAL_RECHARGE="${INITIAL_RECHARGE:-}"
+
+# --- PATH (cron runs with minimal PATH) ----------------------------
+export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+# --- Bootstrap Python environment ----------------------------------
 PYTHON_BIN=""
 VENV_PYTHON="${SCRIPT_DIR}/.venv/bin/python"
 
@@ -45,17 +53,15 @@ else
     exit 1
 fi
 
-# Check if we should print to terminal (interactive commands)
+# --- Run -----------------------------------------------------------
 INTERACTIVE=false
 for arg in "$@"; do
     [[ "$arg" == "--dry-run" || "$arg" == "--import-usage" ]] && INTERACTIVE=true
 done
 
 if $INTERACTIVE; then
-    # Interactive: print directly to terminal
     "$PYTHON_BIN" -m deepseek_balance.main "$@"
 else
-    # Cron: log to file
     mkdir -p logs
     "$PYTHON_BIN" -m deepseek_balance.main "$@" >> "${SCRIPT_DIR}/logs/balance_cron.log" 2>&1
 fi
