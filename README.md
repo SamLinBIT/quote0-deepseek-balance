@@ -67,7 +67,7 @@ quote0/
 │   ├── layout.py            # 余额仪表盘 Canvas 界面构建
 │   ├── heatmap.py           # 热力图 PNG 生成 + Payload 构建
 │   ├── dashboard.py         # 综合仪表盘（余额 + 28 天热力图）
-│   ├── nfc_report.py        # NFC 触碰纯文本消费报告
+│   ├── nfc_report.py        # NFC 触碰纯文本消费报告（TODO: 等待固件更新）
 │   └── dot_push.py          # Quote/0 设备推送
 ├── run_balance_check.sh     # cron 入口脚本
 ├── .env                      # 密钥配置（不提交，chmod 600）
@@ -78,6 +78,12 @@ quote0/
 │   └── balance_cron.log     # cron 运行日志
 └── pyproject.toml
 ```
+
+### NFC 触碰报告
+
+用 NFC 手机轻触 Quote/0 设备时，Canvas API 的 `link` 字段会传递一段纯文本消费报告（7 天 ASCII 柱状图 + 30 天合计/日均）。该文本由 `nfc_report.py` 生成。
+
+> **TODO**: 当前 Quote/0 固件版本仅支持 URL 类型的 `link` 跳转，尚不支持纯文本展示。此功能需等待固件更新后生效。
 
 ## 首次初始化
 
