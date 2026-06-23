@@ -236,12 +236,20 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
     """Fetch balance, gather 28-day costs, and push the combined dashboard."""
     timestamp = datetime.now().strftime("%m/%d %H:%M")
 
+    # Always load history (needed for error fallback AND for saving snapshots)
+    history = load_history()
+    logger.info("History loaded: %d snapshots", len(history.snapshots))
+
+    # Load usage data (for daily cost tracking)
+    usage = load_usage()
+
     if args.dry_run:
         # Use placeholder balance data — no API calls
         balance_display = _format_balance(Decimal("20.55"), config.currency)
         is_available = True
         status_text = "✓ Active"
         error_message = None
+        balance = None
     else:
         from deepseek_balance.balance_api import (
             fetch_balance,
@@ -250,7 +258,6 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
             DeepSeekNetworkError,
             DeepSeekParseError,
         )
-        from deepseek_balance.history import load_history
 
         error_message = None
         balance = None
@@ -276,7 +283,6 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
             error_message = f"Error: {e}"
 
         if error_message or balance is None:
-            history = load_history()
             if history.snapshots:
                 last = history.snapshots[-1]
                 last_val = _format_balance(Decimal(last.total_balance), config.currency)
@@ -287,7 +293,32 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
 
         status_text = "✓ Active" if (balance and balance.is_available) else "✗ Offline"
 
-    # Gather 28-day costs
+    # Save snapshot to balance_history.json (only when we have fresh data)
+    if not args.dry_run and balance is not None:
+        save_snapshot(
+            history=history,
+            total_balance=balance.total_balance,
+            currency=balance.currency,
+            granted_balance=balance.granted_balance,
+            topped_up_balance=balance.topped_up_balance,
+            is_available=balance.is_available,
+            initial_recharge=config.initial_recharge,
+        )
+        logger.info("Snapshot saved")
+
+        # Update monthly consumption from balance delta
+        yesterday_balance = get_yesterday_balance(history)
+        if yesterday_balance is not None:
+            daily_consumption = compute_daily_consumption(
+                balance.total_balance, yesterday_balance
+            )
+            if daily_consumption is not None and daily_consumption > 0:
+                yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+                update_monthly_consumption(usage, daily_consumption, yesterday_str)
+                save_usage(usage)
+                logger.info("Usage data updated")
+
+    # Gather 28-day costs (now includes the fresh snapshot we just saved)
     costs = gather_30day_costs()
 
     # Build payload

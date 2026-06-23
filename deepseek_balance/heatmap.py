@@ -27,7 +27,6 @@ CELL_H = 13
 GAP_X = 2
 GAP_Y = 1
 BORDER = 1  # px border on each cell
-TODAY_BORDER = 2  # px border for today's cell
 
 COLS = 7
 ROWS = 7  # Monday (top) to Sunday (bottom)
@@ -75,8 +74,7 @@ def _cell_border_color(level: int) -> int:
     return 0  # all borders are black on white background
 
 
-TODAY_BORDER_PX = 3  # thicker border for today's cell
-BORDER_PX = 1  # normal cell border
+BORDER_PX = 1  # cell border width
 
 # ---------------------------------------------------------------------------
 # Minimal PNG encoder (grayscale, 8-bit, no palette)
@@ -125,8 +123,6 @@ def _png_to_data_uri(png_bytes: bytes) -> str:
 
 def _render_grid_png(
     grid: list[list[int | None]],  # [row][col]  heat level 0-4 or None
-    today_col: int | None = None,
-    today_row: int | None = None,
 ) -> bytes:
     """Render the 7×6 heatmap grid as a binary PNG with baked-in patterns.
 
@@ -140,10 +136,6 @@ def _render_grid_png(
             level = grid[row][col]
             x0 = col * (CELL_W + GAP_X)
             y0 = row * (CELL_H + GAP_Y)
-            is_today = (col == today_col and row == today_row)
-
-            border_w = TODAY_BORDER_PX if is_today else BORDER_PX
-            border_color = 0  # black
 
             # If no data at all, leave the cell white (gap color) — invisible grid
             if level is None:
@@ -156,35 +148,16 @@ def _render_grid_png(
                         continue
 
                     # Border
-                    if dx < border_w or dx >= CELL_W - border_w or dy < border_w or dy >= CELL_H - border_w:
-                        pixels[py][px] = border_color
+                    if dx < BORDER_PX or dx >= CELL_W - BORDER_PX or dy < BORDER_PX or dy >= CELL_H - BORDER_PX:
+                        pixels[py][px] = 0  # black border
                     else:
                         # Interior pattern
-                        ix = dx - border_w
-                        iy = dy - border_w
-                        iw = CELL_W - 2 * border_w
-                        ih = CELL_H - 2 * border_w
+                        ix = dx - BORDER_PX
+                        iy = dy - BORDER_PX
+                        iw = CELL_W - 2 * BORDER_PX
+                        ih = CELL_H - 2 * BORDER_PX
                         if iw > 0 and ih > 0:
                             pixels[py][px] = _cell_pattern(ix, iy, level)
-
-    # ---- Today marker: ring (visible on any background) ----
-    if today_col is not None and today_row is not None:
-        level = grid[today_row][today_col]
-        x0 = today_col * (CELL_W + GAP_X)
-        y0 = today_row * (CELL_H + GAP_Y)
-        cx = x0 + CELL_W // 2
-        cy = y0 + CELL_H // 2
-        r = 2  # radius → 5 px outer diameter
-        # Black ring on light cells, white ring on dark cells
-        ring_color = 0 if (level is not None and level <= 2) else 255
-        for dy in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                d_sq = dx * dx + dy * dy
-                # ring: distance ≈ r (hollow circle outline)
-                if (r - 1) * (r - 1) <= d_sq <= r * r:
-                    px, py = cx + dx, cy + dy
-                    if 0 <= px < GRID_W and 0 <= py < GRID_H:
-                        pixels[py][px] = ring_color
 
     return _make_grayscale_png(GRID_W, GRID_H, pixels)
 
@@ -459,8 +432,6 @@ D4_GRID_H = D4_ROWS * D4_CELL_H + (D4_ROWS - 1) * D4_GAP_Y  # 102
 
 def _render_4col_grid_png(
     grid: list[list[int | None]],  # [row][col]  heat level 0-4 or None
-    today_col: int | None = None,
-    today_row: int | None = None,
 ) -> bytes:
     """Render the 4×7 heatmap grid as a binary PNG with baked-in patterns."""
     pixels = [[255 for _ in range(D4_GRID_W)] for _ in range(D4_GRID_H)]
@@ -470,9 +441,6 @@ def _render_4col_grid_png(
             level = grid[row][col]
             x0 = col * (D4_CELL_W + D4_GAP_X)
             y0 = row * (D4_CELL_H + D4_GAP_Y)
-            is_today = (col == today_col and row == today_row)
-
-            border_w = TODAY_BORDER_PX if is_today else BORDER_PX
 
             if level is None:
                 continue
@@ -482,32 +450,15 @@ def _render_4col_grid_png(
                     px, py = x0 + dx, y0 + dy
                     if not (0 <= px < D4_GRID_W and 0 <= py < D4_GRID_H):
                         continue
-                    if dx < border_w or dx >= D4_CELL_W - border_w or dy < border_w or dy >= D4_CELL_H - border_w:
+                    if dx < BORDER_PX or dx >= D4_CELL_W - BORDER_PX or dy < BORDER_PX or dy >= D4_CELL_H - BORDER_PX:
                         pixels[py][px] = 0  # black border
                     else:
-                        ix = dx - border_w
-                        iy = dy - border_w
-                        iw = D4_CELL_W - 2 * border_w
-                        ih = D4_CELL_H - 2 * border_w
+                        ix = dx - BORDER_PX
+                        iy = dy - BORDER_PX
+                        iw = D4_CELL_W - 2 * BORDER_PX
+                        ih = D4_CELL_H - 2 * BORDER_PX
                         if iw > 0 and ih > 0:
                             pixels[py][px] = _cell_pattern(ix, iy, level)
-
-    # Today marker: ring
-    if today_col is not None and today_row is not None:
-        level = grid[today_row][today_col]
-        x0 = today_col * (D4_CELL_W + D4_GAP_X)
-        y0 = today_row * (D4_CELL_H + D4_GAP_Y)
-        cx = x0 + D4_CELL_W // 2
-        cy = y0 + D4_CELL_H // 2
-        r = 2
-        ring_color = 0 if (level is not None and level <= 2) else 255
-        for dy in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                d_sq = dx * dx + dy * dy
-                if (r - 1) * (r - 1) <= d_sq <= r * r:
-                    px, py = cx + dx, cy + dy
-                    if 0 <= px < D4_GRID_W and 0 <= py < D4_GRID_H:
-                        pixels[py][px] = ring_color
 
     return _make_grayscale_png(D4_GRID_W, D4_GRID_H, pixels)
 
@@ -577,7 +528,7 @@ def render_28day_heatmap(
         col_dates.append(d.strftime("%-m/%-d"))
 
     # Render PNG
-    grid_uri = _png_to_data_uri(_render_4col_grid_png(grid, today_col, today_row))
+    grid_uri = _png_to_data_uri(_render_4col_grid_png(grid))
 
     # Swatches
     swatch_uris = {}
@@ -632,7 +583,7 @@ def build_heatmap_payload(
     ) = _assign_heat_levels(costs)
 
     # Render the grid as one PNG
-    grid_png = _render_grid_png(grid, today_col, today_row)
+    grid_png = _render_grid_png(grid)
     grid_uri = _png_to_data_uri(grid_png)
 
     # Render legend swatches
