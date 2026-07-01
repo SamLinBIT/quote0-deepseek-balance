@@ -37,5 +37,3 @@ CLAUDE.md
 layout_editor.html
 run_balance_check.sh
 docker-compose.yml
-docker/
-.github/
