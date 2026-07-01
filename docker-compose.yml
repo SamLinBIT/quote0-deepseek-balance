@@ -1,0 +1,23 @@
+# DeepSeek Balance Dashboard — Docker Compose
+#
+# Usage:
+#   1. Make sure .env exists in this directory with DEEPSEEK_API_KEY, DOT_API_KEY, DOT_DEVICE_ID
+#   2. Customize config.json if needed (cron schedule, import, etc.)
+#   3. docker compose up -d
+#   4. docker compose logs -f   (watch cron output)
+
+services:
+  deepseek-balance:
+    image: samlinxd/deepseek-balance:latest
+    # Use `build: .` instead of `image:` to build locally
+    # build: .
+    container_name: deepseek-balance
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    # Optional: mount usage ZIP for initial import
+    # - ./usage_data.zip:/app/data/usage_data.zip:ro

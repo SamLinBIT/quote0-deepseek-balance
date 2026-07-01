@@ -1,0 +1,16 @@
+{
+  "timezone": "Asia/Shanghai",
+  "currency": "CNY",
+  "schedule": [
+    {"cron": "0 0 * * *", "mode": "dashboard"},
+    {"cron": "0 2 * * *", "mode": "dashboard"},
+    {"cron": "0 4 * * *", "mode": "dashboard"},
+    {"cron": "0 6 * * *", "mode": "dashboard"},
+    {"cron": "30 8 * * *", "mode": "dashboard"},
+    {"cron": "58 15 * * *", "mode": "dashboard"}
+  ],
+  "import": {
+    "enabled": false,
+    "zip_path": "/app/data/usage_data.zip"
+  }
+}

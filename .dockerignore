@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+
+# Secrets / data
+.env
+data/
+logs/
+
+# Docs and assets
+doc/
+pic/
+*.JPEG
+*.jpeg
+*.jpg
+*.png
+
+# ZIP imports
+*.zip
+
+# Claude / IDE
+.claude/
+.vscode/
+.idea/
+
+# Misc
+README.md
+QUOTE0_MANUAL.md
+CLAUDE.md
+layout_editor.html
+run_balance_check.sh
+docker-compose.yml
+docker/
+.github/

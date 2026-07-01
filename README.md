@@ -69,8 +69,15 @@ quote0/
 │   ├── dashboard.py         # 综合仪表盘（余额 + 28 天热力图）
 │   ├── nfc_report.py        # NFC 触碰纯文本消费报告（TODO: 等待固件更新）
 │   └── dot_push.py          # Quote/0 设备推送
-├── run_balance_check.sh     # cron 入口脚本
-├── .env                      # 密钥配置（不提交，chmod 600）
+├── docker/
+│   └── entrypoint.sh        # Docker 容器入口脚本
+├── .github/workflows/
+│   └── docker-publish.yml   # GitHub Actions 自动构建镜像
+├── Dockerfile               # Docker 镜像定义
+├── docker-compose.yml       # Docker Compose 编排
+├── config.json              # Docker 模式配置文件
+├── run_balance_check.sh     # Python 模式 cron 入口脚本
+├── .env                     # 密钥配置（不提交，chmod 600）
 ├── data/
 │   ├── balance_history.json # 每日余额快照（自动生成）
 │   └── usage_history.json   # 月消费数据 + 导入的每日明细
@@ -79,13 +86,19 @@ quote0/
 └── pyproject.toml
 ```
 
-### NFC 触碰报告
+### NFC 触碰
 
-用 NFC 手机轻触 Quote/0 设备时，Canvas API 的 `link` 字段会传递一段纯文本消费报告（7 天 ASCII 柱状图 + 30 天合计/日均）。该文本由 `nfc_report.py` 生成。
+用 NFC 手机轻触 Quote/0 设备时，自动跳转到 [DeepSeek 管理后台](https://platform.deepseek.com)，方便查看套餐详情。
 
-> **TODO**: 当前 Quote/0 固件版本仅支持 URL 类型的 `link` 跳转，尚不支持纯文本展示。此功能需等待固件更新后生效。
+> 经测试，设备 NFC 固件仅支持 `http`/`https` URL 和部分 URL Scheme（如 `weixin://`），不支持 `data:` URI 或纯文本。详见 `doc/nfc_link_test.md`。
 
-## 首次初始化
+## 部署方式
+
+项目支持两种部署方式：**Python 直接运行** 和 **Docker 容器运行**。二选一即可。
+
+---
+
+## 方式一：Python 直接运行
 
 ### 1. 环境准备
 
@@ -151,9 +164,11 @@ Saved to data/usage_history.json
 ./run_balance_check.sh
 ```
 
-## 日常运行
+## Python 模式日常运行
 
 ### Crontab 定时推送
+
+> Docker 模式下 cron 由容器管理，无需配置系统 crontab。以下仅适用于 Python 直接运行。
 
 密钥已由脚本从 `.env` 自动加载，crontab 只需配置执行时间即可。示例 — 三视图轮换推送：
 
@@ -189,6 +204,95 @@ crontab -e
 | `./run_balance_check.sh --import-usage <zip>` | 导入 DeepSeek 月度用量报告 |
 
 > `--heatmap` 和 `--dashboard` 也支持 `--dry-run` 预览。
+
+---
+
+## 方式二：Docker 运行
+
+### 1. 配置文件
+
+项目根目录下的 `config.json` 是 Docker 模式的唯一配置文件，包含所有运行参数：
+
+```json
+{
+  "timezone": "Asia/Shanghai",
+  "currency": "CNY",
+  "schedule": [
+    {"cron": "0 0 * * *", "mode": "dashboard"},
+    {"cron": "0 2 * * *", "mode": "dashboard"},
+    {"cron": "0 4 * * *", "mode": "dashboard"},
+    {"cron": "0 6 * * *", "mode": "dashboard"},
+    {"cron": "30 8 * * *", "mode": "dashboard"},
+    {"cron": "58 15 * * *", "mode": "dashboard"}
+  ],
+  "import": {
+    "enabled": false,
+    "zip_path": "/app/data/usage_data.zip"
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `timezone` | 容器时区，用于 cron 时间计算 |
+| `currency` | 货币单位，`CNY` 或 `USD` |
+| `schedule[].cron` | 标准 5 字段 cron 表达式（按容器时区） |
+| `schedule[].mode` | 推送模式：`balance` / `heatmap` / `dashboard` |
+| `import.enabled` | 首次启动时是否导入 DeepSeek 用量数据 |
+| `import.zip_path` | 用量 ZIP 文件在容器内的路径 |
+
+### 2. 拉取镜像并运行
+
+```bash
+# 拉取镜像
+docker pull samlinxd/deepseek-balance:latest
+
+# 运行容器（--env-file 加载密钥，不会暴露在命令行历史中）
+docker run -d \
+  --name deepseek-balance \
+  --restart unless-stopped \
+  --env-file .env \
+  -v $(pwd)/config.json:/app/config.json:ro \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  samlinxd/deepseek-balance:latest
+```
+
+### 3. Docker Compose（推荐）
+
+```bash
+# docker-compose.yml 已包含在仓库中
+# 确保 .env 和 config.json 在当前目录
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+```
+
+### 4. 导入用量数据
+
+将 DeepSeek 下载的 ZIP 放入 `./data/` 目录，修改 `config.json`：
+
+```json
+"import": {
+  "enabled": true,
+  "zip_path": "/app/data/usage_data_2026_6.zip"
+}
+```
+
+重启容器后自动导入，完成后可将 `enabled` 改回 `false`。
+
+### 5. 自定义 cron 时间表
+
+直接编辑 `config.json` 的 `schedule` 数组，然后重启容器：
+
+```bash
+docker compose restart
+```
+
+> 容器内使用 Alpine crond（busybox），cron 表达式为标准的 5 字段格式（分 时 日 月 星期）。
+
+---
 
 ## 数据文件说明
 
