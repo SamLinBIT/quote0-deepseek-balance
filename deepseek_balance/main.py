@@ -99,7 +99,7 @@ def main() -> int:
     if args.dashboard:
         return _handle_dashboard(args, config)
 
-    timestamp = datetime.now().strftime("%m/%d %H:%M")
+    timestamp = datetime.now().strftime("%-m/%-d %H:%M")
 
     # 2. Load history (always, for both normal display and error fallback)
     history = load_history()
@@ -234,7 +234,7 @@ def _handle_heatmap(args: argparse.Namespace, config) -> int:
 
 def _handle_dashboard(args: argparse.Namespace, config) -> int:
     """Fetch balance, gather 28-day costs, and push the combined dashboard."""
-    timestamp = datetime.now().strftime("%m/%d %H:%M")
+    timestamp = datetime.now().strftime("%-m/%-d %H:%M")
 
     # Always load history (needed for error fallback AND for saving snapshots)
     history = load_history()

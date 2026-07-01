@@ -79,7 +79,12 @@ def build_dashboard_payload(
 
     # Timestamp
     left_children.append(
-        _element("span", tw="text-12-chillksans", children=timestamp)
+        _element(
+            "span",
+            tw="text-12-chillksans",
+            style={"whiteSpace": "nowrap"},
+            children=timestamp,
+        )
     )
 
     # Balance
