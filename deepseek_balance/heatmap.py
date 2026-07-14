@@ -42,8 +42,8 @@ GRID_H = ROWS * CELL_H + (ROWS - 1) * GAP_Y  # 7×13 + 6×1 = 97
 # cell with a distinct black-and-white pattern.  Patterns are chosen to be
 # visually distinguishable at 36×13 px cell size.
 #
-# Level 0 = no spending (hollow), 1 = 5-dot plus (~17%),
-# 2 = horizontal stripes (~33%), 3 = checkerboard (50%), 4 = solid black.
+# Level 0 = ¥0 (hollow), 1 = ≤¥1 (5-dot plus), 2 = ≤¥2 (stripes),
+# 3 = ≤¥3 (checkerboard), 4 = >¥3 (solid black).
 
 
 def _cell_pattern(x: int, y: int, level: int) -> int:
@@ -59,8 +59,8 @@ def _cell_pattern(x: int, y: int, level: int) -> int:
         # plus centered at (2,2): center + 4 orthogonal arms
         return 0 if (tx, ty) in ((2, 1), (1, 2), (2, 2), (3, 2), (2, 3)) else 255
     elif level == 2:
-        # Horizontal stripe every 3rd row — medium texture
-        return 0 if (y % 3 == 0) else 255
+        # Horizontal stripe every 3rd row, offset from edge — medium texture
+        return 0 if ((y + 1) % 3 == 0) else 255
     elif level == 3:
         # 2×2 checkerboard — dense texture
         return 0 if ((x // 2) + (y // 2)) % 2 == 0 else 255
@@ -222,33 +222,6 @@ def gather_30day_costs() -> dict[str, Decimal]:
     return costs
 
 
-def _compute_level_thresholds(positive_costs: list[Decimal]) -> tuple[float, float, float]:
-    """Return (t1, t2, t3) boundaries for levels 1/2, 2/3, 3/4.
-
-    Uses quartile-based thresholds (P25, P50, P75) when ≥10 data points are
-    available, ensuring roughly equal distribution across heat levels.
-    Falls back to fixed-ratio thresholds (25%, 50%, 75% of max) for small samples.
-    """
-    sorted_costs = sorted(float(c) for c in positive_costs)
-    n = len(sorted_costs)
-
-    if n < 10:
-        # Fallback: fixed ratios of max (preserves current behavior)
-        max_val = sorted_costs[-1] if n > 0 else 0.0
-        return (max_val * 0.25, max_val * 0.50, max_val * 0.75)
-
-    # Linear interpolation percentile (no numpy needed)
-    def _percentile(p: float) -> float:
-        k = (n - 1) * p / 100.0
-        f = int(k)
-        c = k - f
-        if f + 1 < n:
-            return sorted_costs[f] + c * (sorted_costs[f + 1] - sorted_costs[f])
-        return sorted_costs[f]
-
-    return (_percentile(25), _percentile(50), _percentile(75))
-
-
 def _assign_heat_levels(
     costs: dict[str, Decimal],
 ) -> tuple[list[list[int | None]], list[list[Decimal | None]], list[str], list[int], int, int | None, int | None]:
@@ -290,26 +263,22 @@ def _assign_heat_levels(
         if 0 <= col < num_cols and 0 <= row < ROWS:
             values[row][col] = cost
 
-    # Compute thresholds (dynamic quartile when ≥10 data points, fixed-ratio otherwise)
-    all_costs = [c for c in costs.values() if c > 0]
-    t1, t2, t3 = _compute_level_thresholds(all_costs)
-
-    # Assign levels
+    # Assign levels using fixed absolute thresholds (easy to read: ¥0/1/2/3)
     today_col, today_row = None, None
     for row in range(ROWS):
         for col in range(num_cols):
             v = values[row][col]
             if v is None:
                 grid[row][col] = None
-            elif v == 0 or not all_costs:
+            elif v == 0:
                 grid[row][col] = 0
             else:
                 fv = float(v)
-                if fv <= t1:
+                if fv <= 1:
                     grid[row][col] = 1
-                elif fv <= t2:
+                elif fv <= 2:
                     grid[row][col] = 2
-                elif fv <= t3:
+                elif fv <= 3:
                     grid[row][col] = 3
                 else:
                     grid[row][col] = 4
@@ -486,10 +455,7 @@ def render_28day_heatmap(
     grid: list[list[int | None]] = [[None for _ in range(D4_COLS)] for _ in range(D4_ROWS)]
     day_labels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
-    # Compute thresholds (dynamic quartile when ≥10 data points, fixed-ratio otherwise)
-    all_costs = [c for c in costs.values() if c > 0]
-    t1, t2, t3 = _compute_level_thresholds(all_costs)
-
+    # Assign levels using fixed absolute thresholds (¥0/1/2/3)
     today_col, today_row = None, None
     for i in range(28):
         d = window_start + timedelta(days=i)
@@ -504,18 +470,16 @@ def render_28day_heatmap(
                 grid[row][col] = None  # future → no fill
             elif cost == 0:
                 grid[row][col] = 0
-            elif all_costs:
+            else:
                 fv = float(cost)
-                if fv <= t1:
+                if fv <= 1:
                     grid[row][col] = 1
-                elif fv <= t2:
+                elif fv <= 2:
                     grid[row][col] = 2
-                elif fv <= t3:
+                elif fv <= 3:
                     grid[row][col] = 3
                 else:
                     grid[row][col] = 4
-            else:
-                grid[row][col] = 0
 
             if d == today:
                 today_col = col
