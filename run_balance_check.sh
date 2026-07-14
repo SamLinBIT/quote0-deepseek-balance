@@ -54,14 +54,5 @@ else
 fi
 
 # --- Run -----------------------------------------------------------
-INTERACTIVE=false
-for arg in "$@"; do
-    [[ "$arg" == "--dry-run" || "$arg" == "--import-usage" ]] && INTERACTIVE=true
-done
-
-if $INTERACTIVE; then
-    "$PYTHON_BIN" -m deepseek_balance.main "$@"
-else
-    mkdir -p logs
-    "$PYTHON_BIN" -m deepseek_balance.main "$@" >> "${SCRIPT_DIR}/logs/balance_cron.log" 2>&1
-fi
+mkdir -p logs
+"$PYTHON_BIN" -m deepseek_balance.main "$@" 2>&1 | tee -a "${SCRIPT_DIR}/logs/balance_cron.log"
