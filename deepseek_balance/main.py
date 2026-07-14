@@ -151,7 +151,7 @@ def main() -> int:
             timestamp=timestamp,
             last_balance_display=last_balance_display,
         )
-        return _handle_push(args, config, payload, "error state")
+        return _handle_push(args, config, payload, "余额仪表盘 (离线)", f"错误: {error_message}")
 
     # 4. Calculate consumption
     snapshot_count = len(history.snapshots)
@@ -219,7 +219,8 @@ def main() -> int:
     )
 
     # 7. Push to device
-    return _handle_push(args, config, payload, "dashboard")
+    extra = f"余额 {balance_display}  |  {timestamp}"
+    return _handle_push(args, config, payload, "余额仪表盘", extra)
 
 
 def _handle_heatmap(args: argparse.Namespace, config) -> int:
@@ -229,7 +230,8 @@ def _handle_heatmap(args: argparse.Namespace, config) -> int:
     logger.info("Collected cost data for %d days", len(costs))
 
     payload = build_heatmap_payload(costs, config.currency, config.heatmap_thresholds)
-    return _handle_push(args, config, payload, "heatmap")
+    info = f"{len(costs)} 天数据"
+    return _handle_push(args, config, payload, "30日热力图", info)
 
 
 def _handle_dashboard(args: argparse.Namespace, config) -> int:
@@ -333,7 +335,8 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
         thresholds=config.heatmap_thresholds,
     )
 
-    return _handle_push(args, config, payload, "dashboard")
+    extra = f"余额 {balance_display or '--.--'}  |  {timestamp}"
+    return _handle_push(args, config, payload, "综合仪表盘", extra)
 
 
 def _handle_import_usage(zip_path: str) -> int:
@@ -364,8 +367,13 @@ def _handle_push(
     config,
     payload: dict,
     label: str,
+    extra_info: str = "",
 ) -> int:
-    """Push payload to device or print in dry-run mode."""
+    """Push payload to device or print in dry-run mode.
+
+    Prints a friendly status line to stdout on success or failure.
+    ``extra_info`` is appended to the success line (e.g. balance + timestamp).
+    """
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         logger.info("Dry-run: %s payload printed to stdout", label)
@@ -374,18 +382,24 @@ def _handle_push(
     try:
         msg = push_canvas(config.dot_api_key, config.dot_device_id, payload)
         logger.info("Pushed %s to device: %s", label, msg)
+        detail = f"  {extra_info}" if extra_info else ""
+        print(f"\033[1;32m✓\033[0m {label} 推送成功{detail}")
         return 0
     except DotAuthError as e:
         logger.error("Dot auth error: %s", e)
+        print(f"\033[1;31m✗\033[0m {label} 推送失败: API Key 无效")
         return 1
     except DotDeviceNotFoundError as e:
         logger.error("Device not found: %s", e)
+        print(f"\033[1;31m✗\033[0m {label} 推送失败: 设备未找到")
         return 1
     except DotValidationError as e:
         logger.error("Canvas validation error: %s", e)
+        print(f"\033[1;31m✗\033[0m {label} 推送失败: 数据格式错误")
         return 1
     except DotPushError as e:
         logger.error("Dot push error: %s", e)
+        print(f"\033[1;31m✗\033[0m {label} 推送失败: 网络或服务端异常")
         return 1
 
 
