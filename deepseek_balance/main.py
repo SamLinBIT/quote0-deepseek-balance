@@ -228,7 +228,7 @@ def _handle_heatmap(args: argparse.Namespace, config) -> int:
     costs = gather_30day_costs()
     logger.info("Collected cost data for %d days", len(costs))
 
-    payload = build_heatmap_payload(costs, config.currency)
+    payload = build_heatmap_payload(costs, config.currency, config.heatmap_thresholds)
     return _handle_push(args, config, payload, "heatmap")
 
 
@@ -330,6 +330,7 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
         error_message=error_message,
         timestamp=timestamp,
         costs=costs,
+        thresholds=config.heatmap_thresholds,
     )
 
     return _handle_push(args, config, payload, "dashboard")

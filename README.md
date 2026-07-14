@@ -127,6 +127,7 @@ DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxx"
 DOT_API_KEY="xxxxxxxxxxxxxxxx"
 DOT_DEVICE_ID="xxxxxxxxxxxxxxxx"
 CURRENCY="CNY"              # CNY 或 USD，默认 CNY
+HEATMAP_THRESHOLDS="1,2,3"  # 热力图 1/2/3/4 档分界值，默认 1,2,3
 EOF
 
 # 收紧权限，防止其他用户读取
@@ -378,12 +379,14 @@ docker compose restart
 
 Quote/0 屏幕虽标称 4 级灰度，实测 Canvas API 对 `div` 颜色和 `img` 抖动处理均只能输出纯黑/纯白两色。因此热力图采用**二值图案填充**替代传统灰度：
 
-| 等级 | 图案 | 密度 |
-|------|------|------|
-| 0 | 全白（空心） | 0% |
-| 1 | 五点加号（5-dot plus） | ~17% |
-| 2 | 水平条纹（每 3 行） | ~33% |
-| 3 | 2×2 棋盘格 | 50% |
-| 4 | 全黑 | 100% |
+| 等级 | 图案 | 默认阈值 | 说明 |
+|------|------|----------|------|
+| 0 | 全白（空心） | = ¥0 | 当日无消费 |
+| 1 | 五点加号（5-dot plus） | ≤ ¥1 | 轻度消费 |
+| 2 | 水平条纹（每 3 行，偏移 1px） | ≤ ¥2 | 中度消费 |
+| 3 | 2×2 棋盘格 | ≤ ¥3 | 较高消费 |
+| 4 | 全黑 | > ¥3 | 高峰消费 |
+
+> 阈值可通过 `.env` 中的 `HEATMAP_THRESHOLDS=1,2,3` 自定义（Docker 模式在 `config.json` 的 `heatmap.thresholds` 中设置）。
 
 所有图案在 Python 中绘制到像素数组后编码为 PNG，以 `img` 元素推送到设备，配合 `img-dither-none img-levels-2` 类保持图案原样不被抖动破坏。所有热力格子统一使用 1px 黑色边框，今日格子不做特殊视觉标记。

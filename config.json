@@ -1,6 +1,9 @@
 {
   "timezone": "Asia/Shanghai",
   "currency": "CNY",
+  "heatmap": {
+    "thresholds": [1, 2, 3]
+  },
   "schedule": [
     {"cron": "0 0 * * *", "mode": "dashboard"},
     {"cron": "0 2 * * *", "mode": "dashboard"},

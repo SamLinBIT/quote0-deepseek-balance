@@ -14,6 +14,7 @@ class Config:
     dot_device_id: str
     initial_recharge: float | None
     currency: str  # "CNY" or "USD"
+    heatmap_thresholds: tuple[float, float, float]  # t1, t2, t3 for levels 1/2, 2/3, 3/4
 
 
 def load_config() -> Config:
@@ -46,6 +47,18 @@ def load_config() -> Config:
     if currency not in ("CNY", "USD"):
         errors.append(f"CURRENCY must be CNY or USD, got: {currency}")
 
+    # Heatmap thresholds: comma-separated values for level 1/2/3 boundaries
+    thresholds_str = os.environ.get("HEATMAP_THRESHOLDS", "1,2,3").strip()
+    try:
+        parts = [float(x.strip()) for x in thresholds_str.split(",")]
+        if len(parts) != 3:
+            raise ValueError("need exactly 3 values")
+        if not (parts[0] < parts[1] < parts[2]):
+            raise ValueError("thresholds must be strictly increasing: t1 < t2 < t3")
+        heatmap_thresholds = (parts[0], parts[1], parts[2])
+    except ValueError as e:
+        errors.append(f"HEATMAP_THRESHOLDS invalid ({thresholds_str}): {e}")
+
     if errors:
         for err in errors:
             print(f"[ERROR] {err}", file=sys.stderr)
@@ -56,6 +69,7 @@ def load_config() -> Config:
         print("\nOptional:", file=sys.stderr)
         print("  INITIAL_RECHARGE  - Total amount ever recharged (for total spent calc)", file=sys.stderr)
         print("  CURRENCY          - Preferred currency: CNY (default) or USD", file=sys.stderr)
+        print("  HEATMAP_THRESHOLDS - Level boundaries t1,t2,t3 (default: 1,2,3)", file=sys.stderr)
         sys.exit(1)
 
     return Config(
@@ -64,4 +78,5 @@ def load_config() -> Config:
         dot_device_id=dot_device_id,
         initial_recharge=initial_recharge,
         currency=currency,
+        heatmap_thresholds=heatmap_thresholds,
     )

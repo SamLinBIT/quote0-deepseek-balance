@@ -35,6 +35,16 @@ TZ=$(python3 -c "import json; print(json.load(open('$CONFIG')).get('timezone','A
 export TZ
 echo "[entrypoint] Timezone: $TZ"
 
+# Heatmap thresholds
+HEATMAP_THRESHOLDS=$(python3 -c "
+import json
+c = json.load(open('$CONFIG'))
+t = c.get('heatmap', {}).get('thresholds', [1, 2, 3])
+print(','.join(str(x) for x in t))
+")
+export HEATMAP_THRESHOLDS
+echo "[entrypoint] Heatmap thresholds: $HEATMAP_THRESHOLDS"
+
 # --- Initial data import (DeepSeek usage ZIP) ---
 IMPORT_ENABLED=$(python3 -c "import json; c=json.load(open('$CONFIG')); print('yes' if c.get('import',{}).get('enabled') else 'no')")
 if [ "$IMPORT_ENABLED" = "yes" ]; then

@@ -41,6 +41,7 @@ def build_dashboard_payload(
     error_message: str | None = None,
     timestamp: str = "",
     costs: dict[str, Decimal] | None = None,
+    thresholds: tuple[float, float, float] = (1.0, 2.0, 3.0),
 ) -> dict[str, Any]:
     """Build the combined dashboard Canvas payload.
 
@@ -54,7 +55,7 @@ def build_dashboard_payload(
         costs: 28-day cost data dict; if None, gathered automatically.
     """
     # ---- Heatmap data ----
-    hm = render_28day_heatmap(costs, currency)
+    hm = render_28day_heatmap(costs, currency, thresholds)
 
     # ---- Left column ----
     left_children: list[dict[str, Any]] = []

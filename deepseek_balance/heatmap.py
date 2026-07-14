@@ -224,14 +224,20 @@ def gather_30day_costs() -> dict[str, Decimal]:
 
 def _assign_heat_levels(
     costs: dict[str, Decimal],
+    thresholds: tuple[float, float, float] = (1.0, 2.0, 3.0),
 ) -> tuple[list[list[int | None]], list[list[Decimal | None]], list[str], list[int], int, int | None, int | None]:
     """Map daily costs to heat levels (0-4) in a 7-row × 6-col grid.
+
+    Args:
+        costs: {date_str: Decimal cost}
+        thresholds: (t1, t2, t3) boundaries for levels 1/2, 2/3, 3/4.
+                    Default (1, 2, 3) → ≤¥1 / ≤¥2 / ≤¥3 / >¥3.
 
     Returns:
         grid:       7×6 heat levels (0-4 or None)
         values:     7×6 Decimal costs (for tooltip / avg calc)
-        day_labels: per-row labels ["一","二",…,"日"]
-        col_dates:  list of 6 date strings for the first day in each column
+        day_labels: per-row labels ["Mo","Tu",…,"Su"]
+        col_dates:  list of date strings for the first day in each column
         today_col, today_row: position of today's cell (or None)
     """
     today = date.today()
@@ -263,7 +269,8 @@ def _assign_heat_levels(
         if 0 <= col < num_cols and 0 <= row < ROWS:
             values[row][col] = cost
 
-    # Assign levels using fixed absolute thresholds (easy to read: ¥0/1/2/3)
+    # Assign levels using configured thresholds
+    t1, t2, t3 = thresholds
     today_col, today_row = None, None
     for row in range(ROWS):
         for col in range(num_cols):
@@ -274,11 +281,11 @@ def _assign_heat_levels(
                 grid[row][col] = 0
             else:
                 fv = float(v)
-                if fv <= 1:
+                if fv <= t1:
                     grid[row][col] = 1
-                elif fv <= 2:
+                elif fv <= t2:
                     grid[row][col] = 2
-                elif fv <= 3:
+                elif fv <= t3:
                     grid[row][col] = 3
                 else:
                     grid[row][col] = 4
@@ -435,6 +442,7 @@ def _render_4col_grid_png(
 def render_28day_heatmap(
     costs: dict[str, Decimal] | None = None,
     currency: str = "CNY",
+    thresholds: tuple[float, float, float] = (1.0, 2.0, 3.0),
 ) -> dict[str, Any]:
     """Render a 28-day (4-col × 7-row) heatmap for the combined dashboard.
 
@@ -455,7 +463,8 @@ def render_28day_heatmap(
     grid: list[list[int | None]] = [[None for _ in range(D4_COLS)] for _ in range(D4_ROWS)]
     day_labels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
-    # Assign levels using fixed absolute thresholds (¥0/1/2/3)
+    # Assign levels using configured thresholds
+    t1, t2, t3 = thresholds
     today_col, today_row = None, None
     for i in range(28):
         d = window_start + timedelta(days=i)
@@ -472,11 +481,11 @@ def render_28day_heatmap(
                 grid[row][col] = 0
             else:
                 fv = float(cost)
-                if fv <= 1:
+                if fv <= t1:
                     grid[row][col] = 1
-                elif fv <= 2:
+                elif fv <= t2:
                     grid[row][col] = 2
-                elif fv <= 3:
+                elif fv <= t3:
                     grid[row][col] = 3
                 else:
                     grid[row][col] = 4
@@ -527,6 +536,7 @@ def render_28day_heatmap(
 def build_heatmap_payload(
     costs: dict[str, Decimal] | None = None,
     currency: str = "CNY",
+    thresholds: tuple[float, float, float] = (1.0, 2.0, 3.0),
 ) -> dict[str, Any]:
     """Build the complete Canvas API payload for the heatmap view.
 
@@ -544,7 +554,7 @@ def build_heatmap_payload(
         col_dates,
         today_col,
         today_row,
-    ) = _assign_heat_levels(costs)
+    ) = _assign_heat_levels(costs, thresholds)
 
     # Render the grid as one PNG
     grid_png = _render_grid_png(grid)
