@@ -406,10 +406,10 @@ D4_GRID_W = D4_COLS * D4_CELL_W + (D4_COLS - 1) * D4_GAP_X  # 177
 D4_GRID_H = D4_ROWS * D4_CELL_H + (D4_ROWS - 1) * D4_GAP_Y  # 102
 
 
-def _render_4col_grid_png(
+def _render_4col_grid_pixels(
     grid: list[list[int | None]],  # [row][col]  heat level 0-4 or None
-) -> bytes:
-    """Render the 4×7 heatmap grid as a binary PNG with baked-in patterns."""
+) -> list[list[int]]:
+    """Render the 4×7 heatmap grid as a pixel array (0=black, 255=white)."""
     pixels = [[255 for _ in range(D4_GRID_W)] for _ in range(D4_GRID_H)]
 
     for row in range(D4_ROWS):
@@ -436,7 +436,14 @@ def _render_4col_grid_png(
                         if iw > 0 and ih > 0:
                             pixels[py][px] = _cell_pattern(ix, iy, level)
 
-    return _make_grayscale_png(D4_GRID_W, D4_GRID_H, pixels)
+    return pixels
+
+
+def _render_4col_grid_png(
+    grid: list[list[int | None]],  # [row][col]  heat level 0-4 or None
+) -> bytes:
+    """Render the 4×7 heatmap grid as a binary PNG with baked-in patterns."""
+    return _make_grayscale_png(D4_GRID_W, D4_GRID_H, _render_4col_grid_pixels(grid))
 
 
 def render_28day_heatmap(
@@ -524,6 +531,7 @@ def render_28day_heatmap(
         "col_dates": col_dates,
         "today_col": today_col,
         "today_row": today_row,
+        "grid": grid,
         "grid_w": D4_GRID_W,
         "grid_h": D4_GRID_H,
         "cell_w": D4_CELL_W,

@@ -203,8 +203,9 @@ crontab -e
 | `./run_balance_check.sh --heatmap` | 30 日消费热力图 |
 | `./run_balance_check.sh --dashboard` | 综合仪表盘（余额 + 28 天热力图） |
 | `./run_balance_check.sh --import-usage <zip>` | 导入 DeepSeek 月度用量报告 |
+| `./run_balance_check.sh --export-png` | 将综合仪表盘渲染为 PNG 保存到 `~/Downloads/`，不推送 |
 
-> `--heatmap` 和 `--dashboard` 也支持 `--dry-run` 预览。
+> `--heatmap` 和 `--dashboard` 也支持 `--dry-run` 预览；`--export-png` 可单独使用（隐含综合仪表盘），也可与 `--dry-run` 组合（用占位余额渲染，不调用 API）。
 
 ---
 

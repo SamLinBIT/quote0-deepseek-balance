@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
 # ============================================================
 # DeepSeek Balance Dashboard — cron entry point
+# Compatible with bash and zsh.
 #
 # Secrets are read from .env in the script directory.
 # ============================================================
+
+# --- Shell options (bash/zsh compatible) ----------------------------
+# zsh uses 'pipe_fail' (with underscore), bash uses 'pipefail'.
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+    set -euo pipe_fail
+else
+    set -euo pipefail
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -13,7 +20,8 @@ cd "$SCRIPT_DIR"
 # --- Load secrets --------------------------------------------------
 if [[ -f "${SCRIPT_DIR}/.env" ]]; then
     set -a            # auto-export all variables
-    source "${SCRIPT_DIR}/.env"
+    # shellcheck disable=SC1091
+    . "${SCRIPT_DIR}/.env"
     set +a
 else
     echo "[ERROR] .env file not found at ${SCRIPT_DIR}/.env"
@@ -36,10 +44,10 @@ VENV_PYTHON="${SCRIPT_DIR}/.venv/bin/python"
 
 if [[ -x "$VENV_PYTHON" ]]; then
     PYTHON_BIN="$VENV_PYTHON"
-elif command -v uv &>/dev/null; then
+elif command -v uv >/dev/null 2>&1; then
     echo "[bootstrap] Creating venv with uv..."
     uv venv --quiet && PYTHON_BIN="$VENV_PYTHON"
-elif command -v python3 &>/dev/null; then
+elif command -v python3 >/dev/null 2>&1; then
     echo "[bootstrap] Creating venv with python3..."
     if python3 -m venv .venv 2>/dev/null; then
         PYTHON_BIN="$VENV_PYTHON"
