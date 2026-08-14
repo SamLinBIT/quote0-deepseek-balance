@@ -9,6 +9,7 @@ grayscale rendering on the e-ink display.
 from __future__ import annotations
 
 import base64
+import logging
 import struct
 import zlib
 from datetime import date, datetime, timedelta
@@ -16,8 +17,16 @@ from decimal import Decimal
 from typing import Any
 
 from deepseek_balance.usage_data import load_usage, get_daily_cost
-from deepseek_balance.history import load_history
+from deepseek_balance.history import load_history, Snapshot
+from deepseek_balance.recharges import (
+    load_recharges,
+    recharge_sum_in_window,
+    recharge_sum_on_date,
+    estimate_recharge,
+)
 from deepseek_balance.layout import _format_balance
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Grid geometry (pixels)
@@ -183,17 +192,19 @@ def _render_swatch_png(level: int, size: int = 12) -> bytes:
 def gather_30day_costs() -> dict[str, Decimal]:
     """Collect daily DeepSeek costs for the last 30 days.
 
-    Prefers imported CSV costs, falls back to balance-history deltas.
+    Prefers imported CSV costs, falls back to balance-history deltas
+    corrected for recorded recharges.
     Returns ``{date_str: Decimal}`` — missing entries mean no data.
     """
     usage = load_usage()
     history = load_history()
+    recharges = load_recharges()
 
-    # Index snapshots by date for O(1) lookup
-    snapshots: dict[str, Decimal] = {}
+    # Index snapshots by date for O(1) lookup (keep recorded_at for attribution)
+    snapshots: dict[str, Snapshot] = {}
     for snap in history.snapshots:
         if snap.total_balance:
-            snapshots[snap.date] = Decimal(snap.total_balance)
+            snapshots[snap.date] = snap
 
     today = date.today()
     costs: dict[str, Decimal] = {}
@@ -208,16 +219,36 @@ def gather_30day_costs() -> dict[str, Decimal]:
             costs[d_str] = csv_cost
             continue
 
-        # 2) Fall back to balance delta (yesterday - today)
-        #    Need snapshots for BOTH d-1 and d
+        # 2) Fall back to balance delta (yesterday - today), corrected for
+        #    recharges that fell inside the snapshot interval
         prev_str = (d - timedelta(days=1)).isoformat()
-        prev_balance = snapshots.get(prev_str)
-        curr_balance = snapshots.get(d_str)
-        if prev_balance is not None and curr_balance is not None:
-            delta = prev_balance - curr_balance
+        prev_snap = snapshots.get(prev_str)
+        curr_snap = snapshots.get(d_str)
+        if prev_snap is not None and curr_snap is not None:
+            delta = Decimal(prev_snap.total_balance) - Decimal(curr_snap.total_balance)
+            if prev_snap.recorded_at and curr_snap.recorded_at:
+                delta += recharge_sum_in_window(
+                    recharges, prev_snap.recorded_at, curr_snap.recorded_at
+                )
+            else:
+                delta += recharge_sum_on_date(recharges, d_str)
             if delta >= 0:
                 costs[d_str] = delta
-            # else: balance went up (refund?), don't record negative cost
+            elif delta < Decimal("-0.5"):
+                # Balance went up even after applying recorded recharges —
+                # an unrecorded recharge masks this day's actual spend.
+                suggested = estimate_recharge(-delta)
+                hint = f"（按10元整数倍推测充值约 ¥{suggested}）" if suggested else ""
+                logger.warning(
+                    "%s 余额不降反升%s，疑似充值未记录 — 当日消费无法推算。"
+                    "如已充值请运行 ./run_balance_check.sh --recharge <金额> --recharge-date %s",
+                    d_str,
+                    hint,
+                    d_str,
+                )
+            else:
+                # Tiny balance increase (< ¥0.5) — refund noise, treat as no spend
+                costs[d_str] = Decimal("0")
 
     return costs
 

@@ -63,6 +63,7 @@ quote0/
 │   ├── config.py            # 环境变量加载
 │   ├── balance_api.py       # DeepSeek 余额 API 客户端
 │   ├── history.py           # 余额历史快照 + 日消费计算
+│   ├── recharges.py         # 充值记录（余额差修正）
 │   ├── usage_data.py        # 月消费跟踪（CSV 导入 + 增量更新）
 │   ├── layout.py            # 余额仪表盘 Canvas 界面构建
 │   ├── heatmap.py           # 热力图 PNG 生成 + Payload 构建
@@ -80,7 +81,8 @@ quote0/
 ├── .env                     # 密钥配置（不提交，chmod 600）
 ├── data/
 │   ├── balance_history.json # 每日余额快照（自动生成）
-│   └── usage_history.json   # 月消费数据 + 导入的每日明细
+│   ├── usage_history.json   # 月消费数据 + 导入的每日明细
+│   └── recharges.json       # 充值记录（--recharge 写入）
 ├── logs/
 │   └── balance_cron.log     # cron 运行日志
 └── pyproject.toml
@@ -155,7 +157,27 @@ Saved to data/usage_history.json
 
 > **说明**：这一步只需在首次部署当月执行一次。次月起程序会自动从余额快照累加计算月消费，**无需再次导入 ZIP**。
 
-### 5. 验证
+### 5. 记录充值（重要）
+
+余额差无法区分「充值 ¥50 后消费 ¥1.77」和「充值 ¥48.23」——两种情况余额净增相同。程序有两种充值记录方式：
+
+**① 自动检测（默认，无需操作）**：cron 每 30 分钟保存一次余额快照，充值会让相邻两次快照之间的余额跳增。30 分钟内的正常消费通常只有几分钱，因此跳增金额四舍五入到 10 元整数倍即为充值金额（按「每次充值都是 10 的整数倍」的假设），自动写入 `data/recharges.json`。
+
+**② 手动记录（自动检测不准时修正）**：
+
+```bash
+# 充值当天手动记录（默认记在今天）
+./run_balance_check.sh --recharge 50
+
+# 补记历史充值（覆盖该日期的自动记录）
+./run_balance_check.sh --recharge 50 --recharge-date 2026-08-13
+```
+
+> 限制：自动检测只在「同一日内两次快照间隔很短」时可靠。如果充值发生在当天最后一次快照之后（约 23:55 后）或设备离线一整天，程序无法自动推断，日志会输出警告并给出推测金额，请手动补记。
+>
+> 记录后无需其他操作：程序计算每日消费时自动扣除充值金额（`昨日余额 - 今日余额 + 期间充值`），热力图、本月消费、今日消费都会修正。
+
+### 6. 验证
 
 ```bash
 # 预览 JSON 输出（不推送到设备）
@@ -203,6 +225,7 @@ crontab -e
 | `./run_balance_check.sh --heatmap` | 30 日消费热力图 |
 | `./run_balance_check.sh --dashboard` | 综合仪表盘（余额 + 28 天热力图） |
 | `./run_balance_check.sh --import-usage <zip>` | 导入 DeepSeek 月度用量报告 |
+| `./run_balance_check.sh --recharge <金额>` | 记录充值（可加 `--recharge-date YYYY-MM-DD` 补记） |
 
 > `--heatmap` 和 `--dashboard` 也支持 `--dry-run` 预览。
 
@@ -334,14 +357,31 @@ docker compose restart
 - `last_updated_date`：最后数据覆盖日期（防重复累加）
 - `imported_daily_costs`：从 CSV 导入的每日明细
 
+### `data/recharges.json`
+
+`--recharge` 命令写入的充值记录：
+
+```json
+{
+  "recharges": [
+    {"amount": "50.00", "date": "2026-08-13", "recorded_at": "2026-08-13T12:00:00"}
+  ]
+}
+```
+
+- 按 `recorded_at` 归属到相邻两次余额快照之间，用于修正余额差
+- 保留最近 90 天（与余额快照一致）
+
 ## 消费数据计算逻辑
 
 ### 今日消费
 
 ```
 优先：导入的 CSV 中今天的实际扣费
-回退：昨日余额 - 今日余额（余额快照差）
+回退：昨日余额 - 今日余额 + 期间的充值记录
 ```
+
+充值当天余额会上涨，余额差为负；扣除充值记录后即为当天真实消费。若无充值记录，程序输出警告并显示 `--.--`，而不是错误的 0 或负数。
 
 ### 本月消费
 

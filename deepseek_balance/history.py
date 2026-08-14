@@ -10,6 +10,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from deepseek_balance.recharges import detect_and_record_recharge
+
 
 @dataclass
 class Snapshot:
@@ -74,8 +76,25 @@ def save_snapshot(
     is_available: bool,
     initial_recharge: float | None,
 ) -> None:
-    """Save today's balance snapshot, replacing existing same-date entry."""
+    """Save today's balance snapshot, replacing existing same-date entry.
+
+    Before replacing, checks for a balance jump vs today's existing snapshot
+    and auto-records a recharge if found (cron runs ~30 min apart, so a jump
+    between consecutive snapshots is a top-up).
+    """
     today_str = date.today().isoformat()
+
+    existing_today = next(
+        (s for s in history.snapshots if s.date == today_str), None
+    )
+    if existing_today is not None:
+        # Detection writes its record with recorded_at=now, which is <= the
+        # snapshot's recorded_at below — keeps the record inside this
+        # snapshot's interval for reconciliation.
+        detect_and_record_recharge(
+            Decimal(existing_today.total_balance), total_balance
+        )
+
     now_iso = datetime.now().isoformat()
 
     new_snapshot = Snapshot(
@@ -136,16 +155,16 @@ def get_latest_balance(history: HistoryData) -> Decimal | None:
     return Decimal(history.snapshots[-1].total_balance)
 
 
-def get_yesterday_balance(history: HistoryData) -> Decimal | None:
-    """Get yesterday's balance from history snapshots."""
-    yesterday = date.today().isoformat()
-    # yesterday is a date string, but we need the actual previous day
-    # So we check if there's a snapshot from the day before today
-    # Actually, let me keep it simple: find the snapshot with the date before today
+def get_previous_snapshot(history: HistoryData) -> Snapshot | None:
+    """Get the most recent snapshot before today (for delta calculation).
+
+    Returns the full snapshot — ``recorded_at`` is needed to attribute
+    recharge records to the correct interval.
+    """
     today_str = date.today().isoformat()
     for s in reversed(history.snapshots):
         if s.date < today_str:
-            return Decimal(s.total_balance)
+            return s
     return None
 
 

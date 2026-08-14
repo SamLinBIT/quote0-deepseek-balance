@@ -23,6 +23,10 @@ DeepSeek API balance dashboard for the MindReset Dot Quote/0 — a 296×152 pixe
 # Import DeepSeek usage data
 ./run_balance_check.sh --import-usage usage_data_2026_6.zip
 
+# Record a recharge (mandatory after each top-up, fixes recharge-day cost)
+./run_balance_check.sh --recharge 50
+./run_balance_check.sh --recharge 50 --recharge-date 2026-08-13   # retroactive
+
 # Run directly (bypass shell wrapper, needs env vars)
 python -m deepseek_balance.main --dashboard
 ```
@@ -34,16 +38,19 @@ The shell wrapper at `run_balance_check.sh` loads `.env` secrets, sets `TZ=Asia/
 ```
 DeepSeek API ──→ balance snapshot ──→ balance_history.json
                    │
-                   └──→ daily delta (yesterday - today)
+                   └──→ daily delta (yesterday - today + recharges)
                             │
 DeepSeek usage ZIP ──→ usage_history.json (imported_daily_costs)
                             │
                             └──→ 30-day cost dict ──→ heat levels (0-4) ──→ PNG pixels
                                                                               │
+recharges.json (via --recharge) ──→ delta correction ──┘                    │
                                                                               └──→ Canvas JSON payload ──→ Dot API
 ```
 
 **Cost data precedence** (in `gather_30day_costs()`): imported CSV daily costs take priority; balance-history deltas are the fallback. This means a fresh deployment without a ZIP import will only show costs for days where consecutive balance snapshots exist.
+
+**Recharge reconciliation**: a balance delta alone can't separate "recharged ¥50, spent ¥1.77" from "recharged ¥48.23". Recharge records (in `data/recharges.json`) are subtracted out via `daily_cost = balance_before - balance_after + recharge_in_between`, attributed to snapshot intervals by `recorded_at` timestamp comparison (synthesized as noon for retroactive `--recharge-date`). Two record sources: manual (`--recharge`, overrides auto records on the same date) and auto — `save_snapshot()` calls `detect_and_record_recharge()` when today's snapshot exists, rounding a balance jump to the nearest ¥10 multiple (user's recharge pattern; 30-min cron cadence makes the jump ≈ recharge amount). Cross-day jumps aren't auto-recorded (may include a full day of spend). A still-negative delta (< −¥0.5) means an unrecorded recharge — code logs a warning with a suggested amount instead of silently showing 0; tiny negatives are refund noise and clamp to 0.
 
 **Heat level thresholds** (`_compute_level_thresholds`): when ≥10 positive-cost days exist, uses quartile boundaries (P25/P50/P75) for even distribution across the 5 levels. Falls back to fixed ratios of the max cost (25%/50%/75%) for small samples.
 
@@ -84,6 +91,7 @@ The PNG encoder (`_make_grayscale_png`, `_png_chunk`) is a minimal pure-Python i
 | `main.py` | Orchestrator — parses CLI args, fetches balance, saves history, dispatches to the correct payload builder, pushes to device |
 | `balance_api.py` | DeepSeek `/user/balance` API client — 3-retry with exponential backoff (1s/2s), prefers CNY currency |
 | `history.py` | On-disk balance snapshots (`data/balance_history.json`) — 90-day retention, same-date dedup, corruption auto-backup |
+| `recharges.py` | Recharge event log (`data/recharges.json`) — `record_recharge()` (manual, via `--recharge`), `detect_and_record_recharge()` (auto, called from `save_snapshot`, rounds balance jumps to nearest ¥10), `estimate_recharge()` (warning suggestions); window-sum helpers (`recharge_sum_in_window`/`recharge_sum_since`/`recharge_sum_on_date`) reconcile recharges into balance deltas by `recorded_at` vs snapshot timestamps |
 | `usage_data.py` | Monthly cost tracking (`data/usage_history.json`) — CSV import, daily cost lookup, monthly accumulation with dedup guard |
 | `config.py` | Env-var loading (`DEEPSEEK_API_KEY`, `DOT_API_KEY`, `DOT_DEVICE_ID`, optional `INITIAL_RECHARGE` and `CURRENCY`) |
 | `layout.py` | Balance dashboard Canvas payload — left icon column + right info column |

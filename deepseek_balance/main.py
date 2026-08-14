@@ -12,7 +12,7 @@ import json
 import logging
 import sys
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from deepseek_balance.config import load_config
 from deepseek_balance.balance_api import (
@@ -25,8 +25,14 @@ from deepseek_balance.balance_api import (
 from deepseek_balance.history import (
     load_history,
     save_snapshot,
-    get_yesterday_balance,
+    get_previous_snapshot,
     compute_daily_consumption,
+)
+from deepseek_balance.recharges import (
+    load_recharges,
+    record_recharge,
+    recharge_sum_since,
+    estimate_recharge,
 )
 from deepseek_balance.layout import build_canvas_payload, _format_balance, _format_change
 from deepseek_balance.usage_data import (
@@ -73,6 +79,19 @@ def main() -> int:
         help="Import monthly cost data from a DeepSeek usage zip (e.g. usage_data_2026_6.zip)",
     )
     parser.add_argument(
+        "--recharge",
+        type=str,
+        metavar="AMOUNT",
+        help="Record a DeepSeek account recharge (e.g. --recharge 50). "
+        "Keeps daily cost exact on recharge days.",
+    )
+    parser.add_argument(
+        "--recharge-date",
+        type=str,
+        metavar="YYYY-MM-DD",
+        help="Date the recharge happened (defaults to today; use for retroactive recording)",
+    )
+    parser.add_argument(
         "--heatmap",
         action="store_true",
         help="Push 30-day spending heatmap to device (separate view from balance dashboard)",
@@ -83,6 +102,10 @@ def main() -> int:
         help="Push combined dashboard (balance + 28-day heatmap) to device",
     )
     args = parser.parse_args()
+
+    # Handle --recharge (record a recharge event, no API calls)
+    if args.recharge:
+        return _handle_recharge(args.recharge, args.recharge_date)
 
     # Handle --import-usage (one-time data import)
     if args.import_usage:
@@ -169,13 +192,34 @@ def main() -> int:
         yesterday_balance = None
         logger.info("Daily cost (from usage data): %s %s", balance.currency, daily_consumption)
     else:
-        yesterday_balance = get_yesterday_balance(history)
+        prev_snapshot = get_previous_snapshot(history)
+        yesterday_balance = (
+            Decimal(prev_snapshot.total_balance) if prev_snapshot else None
+        )
         daily_consumption = compute_daily_consumption(
             balance.total_balance, yesterday_balance
         )
-        if yesterday_balance is not None:
+        if prev_snapshot is not None:
+            # Add recharges recorded since the previous snapshot — the balance
+            # delta alone goes negative on a recharge day
+            daily_consumption += recharge_sum_since(
+                load_recharges(), prev_snapshot.recorded_at
+            )
             logger.info("Yesterday balance: %s %s", balance.currency, yesterday_balance)
-            logger.info("Daily consumption (from balance delta): %s %s", balance.currency, daily_consumption)
+            if daily_consumption < Decimal("-0.5"):
+                suggested = estimate_recharge(-daily_consumption)
+                hint = f"（按10元整数倍推测充值约 ¥{suggested}）" if suggested else ""
+                logger.warning(
+                    "余额不降反升%s，疑似充值未记录 — 今日消费无法推算。"
+                    "如已充值请运行 ./run_balance_check.sh --recharge <金额>",
+                    hint,
+                )
+                daily_consumption = None
+            elif daily_consumption < 0:
+                # Tiny balance increase (< ¥0.5) — refund noise, treat as no spend
+                daily_consumption = Decimal("0")
+            else:
+                logger.info("Daily consumption (from balance delta): %s %s", balance.currency, daily_consumption)
         else:
             logger.info("No historical data — daily consumption unavailable")
 
@@ -309,16 +353,29 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
         logger.info("Snapshot saved")
 
         # Update monthly consumption from balance delta
-        yesterday_balance = get_yesterday_balance(history)
-        if yesterday_balance is not None:
+        prev_snapshot = get_previous_snapshot(history)
+        if prev_snapshot is not None:
             daily_consumption = compute_daily_consumption(
-                balance.total_balance, yesterday_balance
+                balance.total_balance, Decimal(prev_snapshot.total_balance)
+            )
+            # Add recharges recorded since the previous snapshot — the balance
+            # delta alone goes negative on a recharge day
+            daily_consumption += recharge_sum_since(
+                load_recharges(), prev_snapshot.recorded_at
             )
             if daily_consumption is not None and daily_consumption > 0:
                 yesterday_str = (date.today() - timedelta(days=1)).isoformat()
                 update_monthly_consumption(usage, daily_consumption, yesterday_str)
                 save_usage(usage)
                 logger.info("Usage data updated")
+            elif daily_consumption is not None and daily_consumption < Decimal("-0.5"):
+                suggested = estimate_recharge(-daily_consumption)
+                hint = f"（按10元整数倍推测充值约 ¥{suggested}）" if suggested else ""
+                logger.warning(
+                    "余额不降反升%s，疑似充值未记录 — 本月消费将缺失当日数据。"
+                    "如已充值请运行 ./run_balance_check.sh --recharge <金额>",
+                    hint,
+                )
 
     # Gather 28-day costs (now includes the fresh snapshot we just saved)
     costs = gather_30day_costs()
@@ -337,6 +394,36 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
 
     extra = f"余额 {balance_display or '--.--'}  |  {timestamp}"
     return _handle_push(args, config, payload, "综合仪表盘", extra)
+
+
+def _handle_recharge(amount_str: str, date_str: str | None) -> int:
+    """Record a recharge event so daily cost stays exact on recharge days.
+
+    Standalone command — no balance fetch, no device push.
+    """
+    try:
+        amount = Decimal(amount_str)
+    except InvalidOperation:
+        print(f"[ERROR] 充值金额无效: {amount_str!r}", file=sys.stderr)
+        return 1
+    if amount <= 0:
+        print("[ERROR] 充值金额必须大于 0", file=sys.stderr)
+        return 1
+
+    if date_str is not None:
+        try:
+            recharge_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            print(f"[ERROR] 日期格式无效: {date_str!r} (应为 YYYY-MM-DD)", file=sys.stderr)
+            return 1
+        if recharge_date > date.today():
+            print("[ERROR] 充值日期不能晚于今天", file=sys.stderr)
+            return 1
+
+    rec = record_recharge(amount, date_str)
+    print(f"✓ 已记录充值 ¥{amount:,.2f} ({rec.date})")
+    print(f"  保存至 data/recharges.json — 后续运行的消费计算将自动扣除充值金额")
+    return 0
 
 
 def _handle_import_usage(zip_path: str) -> int:
