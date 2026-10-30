@@ -16,6 +16,10 @@ DeepSeek API balance dashboard for the MindReset Dot Quote/0 — a 296×152 pixe
 ./run_balance_check.sh --heatmap        # 30-day heatmap
 ./run_balance_check.sh --dashboard      # combined (balance + 28-day heatmap)
 
+# Export dashboard to local PNG (no push) — saved to ~/Downloads/
+./run_balance_check.sh --export-png
+./run_balance_check.sh --export-png --dry-run   # placeholder balance, no API call
+
 # Preview without pushing
 ./run_balance_check.sh --dry-run
 ./run_balance_check.sh --dashboard --dry-run
@@ -97,6 +101,7 @@ The PNG encoder (`_make_grayscale_png`, `_png_chunk`) is a minimal pure-Python i
 | `layout.py` | Balance dashboard Canvas payload — left icon column + right info column |
 | `heatmap.py` | PNG heatmap generation + standalone heatmap Canvas payload |
 | `dashboard.py` | Combined dashboard — left balance column (70px) + right 28-day heatmap |
+| `export_png.py` | Local PNG export of the dashboard — 5x7 bitmap font, physical resolution (296x152), no push |
 | `dot_push.py` | Dot Canvas API push — POST to `dot.mindreset.tech`, typed error hierarchy |
 | `nfc_report.py` | ASCII bar-chart text report for the Canvas `link` field (NFC tap-to-view) |
 

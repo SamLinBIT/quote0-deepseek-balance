@@ -77,6 +77,9 @@ def import_cost_csv(zip_path: str | Path) -> tuple[dict[str, Decimal], Decimal, 
             reader = csv.DictReader(io.StringIO(raw))
             for row in reader:
                 utc_date = row.get("utc_date", "").strip()
+                # Official format varies: 'YYYY-MM-DD' (older) or 'YYYYMMDD' (newer)
+                if len(utc_date) == 8 and utc_date.isdigit():
+                    utc_date = f"{utc_date[:4]}-{utc_date[4:6]}-{utc_date[6:8]}"
                 cost_str = row.get("cost", "0").strip()
                 if not utc_date:
                     continue

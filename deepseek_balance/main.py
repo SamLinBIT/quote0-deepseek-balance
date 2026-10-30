@@ -13,6 +13,7 @@ import logging
 import sys
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from deepseek_balance.config import load_config
 from deepseek_balance.balance_api import (
@@ -101,6 +102,11 @@ def main() -> int:
         action="store_true",
         help="Push combined dashboard (balance + 28-day heatmap) to device",
     )
+    parser.add_argument(
+        "--export-png",
+        action="store_true",
+        help="Render the dashboard as a PNG saved to ~/Downloads/ instead of pushing to device",
+    )
     args = parser.parse_args()
 
     # Handle --recharge (record a recharge event, no API calls)
@@ -119,7 +125,7 @@ def main() -> int:
     # 1a. Handle --heatmap and --dashboard (separate views)
     if args.heatmap:
         return _handle_heatmap(args, config)
-    if args.dashboard:
+    if args.dashboard or args.export_png:
         return _handle_dashboard(args, config)
 
     timestamp = datetime.now().strftime("%-m/%-d %H:%M")
@@ -380,6 +386,19 @@ def _handle_dashboard(args: argparse.Namespace, config) -> int:
     # Gather 28-day costs (now includes the fresh snapshot we just saved)
     costs = gather_30day_costs()
 
+    # Export mode: render locally instead of pushing to device
+    if args.export_png:
+        return _handle_export_png(
+            args,
+            config,
+            balance_display=balance_display or "--.--",
+            is_available=is_available,
+            status_text=status_text,
+            error_message=error_message,
+            timestamp=timestamp,
+            costs=costs,
+        )
+
     # Build payload
     payload = build_dashboard_payload(
         balance_display=balance_display or "--.--",
@@ -426,6 +445,43 @@ def _handle_recharge(amount_str: str, date_str: str | None) -> int:
     return 0
 
 
+def _handle_export_png(
+    args: argparse.Namespace,
+    config,
+    *,
+    balance_display: str,
+    is_available: bool,
+    status_text: str,
+    error_message: str | None,
+    timestamp: str,
+    costs: dict[str, Decimal],
+) -> int:
+    """Render the dashboard as a PNG to ~/Downloads/ instead of pushing."""
+    from deepseek_balance.export_png import render_dashboard_png
+
+    try:
+        png_bytes = render_dashboard_png(
+            balance_display=balance_display,
+            currency=config.currency,
+            status_text=status_text,
+            error_message=error_message,
+            timestamp=timestamp,
+            costs=costs,
+        )
+    except Exception as e:
+        logger.error("PNG render failed: %s", e)
+        print(f"[FAIL] PNG render failed: {e}", file=sys.stderr)
+        return 1
+
+    out_dir = Path.home() / "Downloads"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"quote0_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    out_path.write_bytes(png_bytes)
+    logger.info("Exported dashboard PNG to %s", out_path)
+    print(f"[OK] PNG saved to {out_path}", file=sys.stderr)
+    return 0
+
+
 def _handle_import_usage(zip_path: str) -> int:
     """Import DeepSeek usage cost CSV from a zip file."""
     try:
@@ -464,6 +520,7 @@ def _handle_push(
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         logger.info("Dry-run: %s payload printed to stdout", label)
+        print(f"[DRY-RUN] {label} — payload printed above", file=sys.stderr)
         return 0
 
     try:
